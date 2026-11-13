@@ -1,10 +1,9 @@
 {
-  "name": "FORME — Nutrition & Performance",
-  "short_name": "FORME",
-  "start_url": "./index.html",
+  "name": "FORME V2 — Nutrition & Performance",
+  "short_name": "FORME V2",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#0c120f",
-  "theme_color": "#101713",
-  "lang": "fr-CH",
-  "icons": []
+  "background_color": "#0b1220",
+  "theme_color": "#101827",
+  "description": "Tableau de bord personnel nutrition, sport, composition et récupération."
 }
