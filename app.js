@@ -185,7 +185,33 @@
   $("refreshButton").addEventListener("click", () => {
     client.auth.getSession().then(({ data }) => data.session && loadDashboard(data.session));
   });
+$("#withingsConnect").addEventListener("click", async () => {
+  const { data: { session } } = await client.auth.getSession();
 
+  if (!session) {
+    showAuth("Connecte-toi d'abord à FORME.");
+    return;
+  }
+
+  try {
+    const { data, error } = await client.functions.invoke(
+      "withings-connect",
+      {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      }
+    );
+
+    if (error) throw error;
+    if (!data?.url) throw new Error("URL Withings manquante.");
+
+    window.location.href = data.url;
+  } catch (error) {
+    console.error("Erreur connexion Withings :", error);
+    showAuth("Connexion Withings impossible : " + error.message);
+  }
+});
   $("weightForm").addEventListener("submit", async e => {
     e.preventDefault();
     const form = e.currentTarget;
