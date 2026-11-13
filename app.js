@@ -185,6 +185,7 @@
   $("refreshButton").addEventListener("click", () => {
     client.auth.getSession().then(({ data }) => data.session && loadDashboard(data.session));
   });
+  
 $("#withingsConnect").addEventListener("click", async () => {
   const { data: { session } } = await client.auth.getSession();
 
@@ -212,6 +213,7 @@ $("#withingsConnect").addEventListener("click", async () => {
     showAuth("Connexion Withings impossible : " + error.message);
   }
 });
+  
   $("weightForm").addEventListener("submit", async e => {
     e.preventDefault();
     const form = e.currentTarget;
