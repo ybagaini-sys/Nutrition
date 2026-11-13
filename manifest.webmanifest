@@ -1,0 +1,10 @@
+{
+  "name": "FORME — Nutrition & Performance",
+  "short_name": "FORME",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0c120f",
+  "theme_color": "#101713",
+  "lang": "fr-CH",
+  "icons": []
+}
