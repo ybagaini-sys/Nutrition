@@ -264,88 +264,22 @@ async function loadNutrition() {
     .order("consumed_at", { ascending: false });
 
   if (error) {
-  console.error("Erreur nutrition", error);
-  showMessage(
-    "scanSaveMessage",
-    `Enregistrement effectué, mais impossible d'actualiser les macros : ${error.message}`,
-    true
-  );
-  return false;
-}
+    console.error("Erreur nutrition", error);
+    showMessage(
+      "scanSaveMessage",
+      `Erreur de chargement : ${error.message}`,
+      true
+    );
+    return false;
+  }
 
   todayFoods = data || [];
   renderNutrition();
+
   return true;
 }
 
-function renderNutrition() {
-  const calories = todayFoods.reduce(
-    (sum, item) => sum + Number(item.calories || 0), 0
-  );
-
-  const protein = todayFoods.reduce(
-    (sum, item) => sum + Number(item.protein_g || 0), 0
-  );
-
-  setText("caloriesValue", Math.round(calories).toLocaleString("fr-CH"));
-  setText("proteinValue", `${number(protein, 0)} g`);
-  setText("proteinMacro", `${number(protein, 0)} / ${TARGET_PROTEIN} g`);
-  setText("calorieMacro", `${Math.round(calories)} / ${CALORIE_TARGET} kcal`);
-  setText("calorieTarget", `Objectif provisoire : ${CALORIE_TARGET} kcal`);
-  setText("targetCaloriesValue", `${CALORIE_TARGET} kcal`);
-
-  setText(
-    "foodCount",
-    `${todayFoods.length} entrée${todayFoods.length > 1 ? "s" : ""}`
-  );
-
-  const proteinBar = $("proteinBar");
-  const calorieBar = $("calorieBar");
-
-  if (proteinBar) {
-    proteinBar.style.width =
-      `${Math.min(100, protein / TARGET_PROTEIN * 100)}%`;
-  }
-
-  if (calorieBar) {
-    calorieBar.style.width =
-      `${Math.min(100, calories / CALORIE_TARGET * 100)}%`;
-  }
-
-  const history = $("foodHistory");
-  if (!history) return;
-
-  if (!todayFoods.length) {
-    history.innerHTML =
-      '<p class="muted">Aucune consommation enregistrée aujourd’hui.</p>';
-    return;
-  }
-
-  history.innerHTML = todayFoods.map(item => `
-    <div class="food-entry">
-      <div class="food-info">
-        <strong>${escapeHTML(item.food_name || item.name || "Aliment")}</strong>
-        <small>
-          ${formatDate(item.consumed_at, {
-            hour: "2-digit",
-            minute: "2-digit"
-          })}
-          · ${Math.round(Number(item.calories || 0))} kcal
-          · ${number(item.protein_g || 0)} g protéines
-        </small>
-      </div>
-      <button class="delete-button" type="button"
-        data-delete-food="${escapeHTML(item.id)}"
-        aria-label="Supprimer">×</button>
-    </div>
-  `).join("");
-
-  history.querySelectorAll("[data-delete-food]").forEach(button => {
-    button.addEventListener("click", () => {
-      deleteFood(button.dataset.deleteFood);
-    });
-  });
-}
+renderNutrition
 
 async function saveFood(event) {
   event.preventDefault();
@@ -861,21 +795,8 @@ function updateScanPreview() {
 async function addScannedProduct() {
   const button = $("addScannedProduct");
 
-  if (!client || !currentUser) {
-    showMessage(
-      "scanSaveMessage",
-      "Tu n'es pas connecté. Reconnecte-toi avant d'ajouter un produit.",
-      true
-    );
-    return;
-  }
-
-  if (!scannedProductData) {
-    showMessage(
-      "scanSaveMessage",
-      "Aucun produit sélectionné. Scanne à nouveau un produit.",
-      true
-    );
+  if (!client || !currentUser || !scannedProductData) {
+    showMessage("scanSaveMessage", "Session ou produit manquant.", true);
     return;
   }
 
@@ -889,28 +810,28 @@ async function addScannedProduct() {
   ) {
     showMessage(
       "scanSaveMessage",
-      "Tu dois obligatoirement indiquer une quantité consommée supérieure à 0 g.",
+      "Indique obligatoirement une quantité supérieure à 0 g.",
       true
     );
     quantityInput.focus();
     return;
   }
 
-  const nutritionValues = [
-    $("scanCalories").value,
-    $("scanProtein").value,
-    $("scanCarbs").value,
-    $("scanFat").value
+  const fields = [
+    "scanCalories",
+    "scanProtein",
+    "scanCarbs",
+    "scanFat"
   ];
 
-  if (nutritionValues.some(value =>
-    value.trim() === "" ||
-    !Number.isFinite(Number(value)) ||
-    Number(value) < 0
+  if (fields.some(id =>
+    $(id).value.trim() === "" ||
+    !Number.isFinite(Number($(id).value)) ||
+    Number($(id).value) < 0
   )) {
     showMessage(
       "scanSaveMessage",
-      "Vérifie les valeurs nutritionnelles du produit.",
+      "Vérifie les valeurs nutritionnelles.",
       true
     );
     return;
@@ -920,48 +841,43 @@ async function addScannedProduct() {
 
   const row = {
     user_id: currentUser.id,
-    food_name: scannedProductData.name,
-    calories: Number($("scanCalories").value) * factor,
+    product_name_snapshot: scannedProductData.name,
+    quantity_g: quantity,
+    kcal: Number($("scanCalories").value) * factor,
     protein_g: Number($("scanProtein").value) * factor,
     carbs_g: Number($("scanCarbs").value) * factor,
-    fat_g: Number($("scanFat").value) * factor,
-    consumed_at: new Date().toISOString()
+    fat_g: Number($("scanFat").value) * factor
   };
 
   button.disabled = true;
-  showMessage("scanSaveMessage", "Enregistrement dans ton journal…");
+  showMessage("scanSaveMessage", "Enregistrement en cours…");
 
   try {
-    const { data, error } = await client
+    const { error } = await client
       .from("nutrition_logs")
-      .insert(row)
-      .select();
+      .insert(row);
 
-    if (error) {
-      throw error;
-    }
-
-    if (!data || data.length === 0) {
-      throw new Error("Supabase n'a confirmé aucun enregistrement.");
-    }
+    if (error) throw error;
 
     const productName = scannedProductData.name;
-
-    showMessage(
-      "scanSaveMessage",
-      `${productName} (${quantity} g) enregistré. Actualisation des macros…`
-    );
 
     scannedProductData = null;
 
     const refreshed = await loadNutrition();
 
-if (!refreshed) return;
+    if (!refreshed) {
+      showMessage(
+        "scanSaveMessage",
+        "Produit enregistré, mais actualisation des macros impossible. Utilise Actualiser.",
+        true
+      );
+      return;
+    }
 
-showMessage(
-  "scanSaveMessage",
-  `${productName} (${quantity} g) a bien été ajouté au journal.`
-);
+    showMessage(
+      "scanSaveMessage",
+      `${productName} (${quantity} g) ajouté au journal.`
+    );
 
     setTimeout(() => {
       $("scannedProduct")?.classList.add("hidden");
@@ -972,7 +888,7 @@ showMessage(
 
     showMessage(
       "scanSaveMessage",
-      `Échec de l'enregistrement : ${error.message || "Erreur inconnue"}`,
+      `Échec de l'enregistrement : ${error.message}`,
       true
     );
   } finally {
