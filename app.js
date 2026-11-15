@@ -264,12 +264,18 @@ async function loadNutrition() {
     .order("consumed_at", { ascending: false });
 
   if (error) {
-    console.error("Erreur nutrition", error);
-    return;
-  }
+  console.error("Erreur nutrition", error);
+  showMessage(
+    "scanSaveMessage",
+    `Enregistrement effectué, mais impossible d'actualiser les macros : ${error.message}`,
+    true
+  );
+  return false;
+}
 
   todayFoods = data || [];
   renderNutrition();
+  return true;
 }
 
 function renderNutrition() {
@@ -812,22 +818,27 @@ function showScannedProduct() {
   if (!product) return;
 
   setText("scannedProductName", product.name);
+
   setText(
     "scannedProductDetails",
     product.brand ? `Marque : ${product.brand}` : "Marque non renseignée"
   );
-  setText("scannedProductCode", `Code-barres EAN : ${product.barcode}`);
 
   $("scanCalories").value = product.kcal;
   $("scanProtein").value = product.protein;
   $("scanCarbs").value = product.carbs;
   $("scanFat").value = product.fat;
-  $("scanQuantity").value = 100;
+
+  // La quantité doit obligatoirement être saisie par l'utilisateur.
+  $("scanQuantity").value = "";
+
+  showMessage("scanSaveMessage", "");
 
   $("scannerPanel")?.classList.add("hidden");
   $("scannedProduct")?.classList.remove("hidden");
 
   updateScanPreview();
+  $("scanQuantity")?.focus();
 }
 
 function updateScanPreview() {
@@ -848,57 +859,120 @@ function updateScanPreview() {
 }
 
 async function addScannedProduct() {
-  if (!scannedProductData || !currentUser) return;
+  const button = $("addScannedProduct");
 
-  const quantity = Number($("scanQuantity").value);
+  if (!client || !currentUser) {
+    showMessage(
+      "scanSaveMessage",
+      "Tu n'es pas connecté. Reconnecte-toi avant d'ajouter un produit.",
+      true
+    );
+    return;
+  }
 
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    showMessage("scanSaveMessage", "Indique une quantité valide.", true);
+  if (!scannedProductData) {
+    showMessage(
+      "scanSaveMessage",
+      "Aucun produit sélectionné. Scanne à nouveau un produit.",
+      true
+    );
+    return;
+  }
+
+  const quantityInput = $("scanQuantity");
+  const quantity = Number(quantityInput.value);
+
+  if (
+    quantityInput.value.trim() === "" ||
+    !Number.isFinite(quantity) ||
+    quantity <= 0
+  ) {
+    showMessage(
+      "scanSaveMessage",
+      "Tu dois obligatoirement indiquer une quantité consommée supérieure à 0 g.",
+      true
+    );
+    quantityInput.focus();
+    return;
+  }
+
+  const nutritionValues = [
+    $("scanCalories").value,
+    $("scanProtein").value,
+    $("scanCarbs").value,
+    $("scanFat").value
+  ];
+
+  if (nutritionValues.some(value =>
+    value.trim() === "" ||
+    !Number.isFinite(Number(value)) ||
+    Number(value) < 0
+  )) {
+    showMessage(
+      "scanSaveMessage",
+      "Vérifie les valeurs nutritionnelles du produit.",
+      true
+    );
     return;
   }
 
   const factor = quantity / 100;
 
-  const button = $("addScannedProduct");
-  button.disabled = true;
-
-  showMessage("scanSaveMessage", "Ajout au journal…");
-
   const row = {
     user_id: currentUser.id,
     food_name: scannedProductData.name,
-    calories: Number($("scanCalories").value || 0) * factor,
-    protein_g: Number($("scanProtein").value || 0) * factor,
-    carbs_g: Number($("scanCarbs").value || 0) * factor,
-    fat_g: Number($("scanFat").value || 0) * factor,
+    calories: Number($("scanCalories").value) * factor,
+    protein_g: Number($("scanProtein").value) * factor,
+    carbs_g: Number($("scanCarbs").value) * factor,
+    fat_g: Number($("scanFat").value) * factor,
     consumed_at: new Date().toISOString()
   };
 
-  try {
-    const { error } = await client
-      .from("nutrition_logs")
-      .insert(row);
+  button.disabled = true;
+  showMessage("scanSaveMessage", "Enregistrement dans ton journal…");
 
-    if (error) throw error;
+  try {
+    const { data, error } = await client
+      .from("nutrition_logs")
+      .insert(row)
+      .select();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error("Supabase n'a confirmé aucun enregistrement.");
+    }
+
+    const productName = scannedProductData.name;
 
     showMessage(
       "scanSaveMessage",
-      `${scannedProductData.name} ajouté au journal.`
+      `${productName} (${quantity} g) enregistré. Actualisation des macros…`
     );
 
     scannedProductData = null;
 
-    await loadNutrition();
+    const refreshed = await loadNutrition();
+
+if (!refreshed) return;
+
+showMessage(
+  "scanSaveMessage",
+  `${productName} (${quantity} g) a bien été ajouté au journal.`
+);
 
     setTimeout(() => {
       $("scannedProduct")?.classList.add("hidden");
-    }, 1200);
+    }, 2500);
 
   } catch (error) {
-    console.error("Ajout produit scanné", error);
+    console.error("Erreur enregistrement scanner :", error);
+
     showMessage(
       "scanSaveMessage",
-      `Impossible d'ajouter le produit : ${error.message}`,
+      `Échec de l'enregistrement : ${error.message || "Erreur inconnue"}`,
       true
     );
   } finally {
