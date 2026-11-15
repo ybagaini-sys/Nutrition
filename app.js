@@ -185,34 +185,85 @@
   $("refreshButton").addEventListener("click", () => {
     client.auth.getSession().then(({ data }) => data.session && loadDashboard(data.session));
   });
+  
   $("withingsConnect").addEventListener("click", async () => {
+    const { data: { session } } = await client.auth.getSession();
 
-  const { data: { session } } = await client.auth.getSession();
+    if (!session) {
+      showAuth("Connecte-toi d'abord à FORME.");
+      return;
+    }
 
-  if (!session) {
-    showAuth("Connecte-toi d'abord à FORME.");
-    return;
-  }
+    const button = $("withingsConnect");
+    button.disabled = true;
+    $("withingsMessage").textContent = "Connexion à Withings…";
 
-  try {
-    const { data, error } = await client.functions.invoke(
-      "withings-connect",
-      {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`
+    try {
+      const { data, error } = await client.functions.invoke(
+        "withings-connect",
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
         }
+      );
+
+      if (error) throw error;
+      if (!data?.url) throw new Error("URL Withings manquante.");
+
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("Erreur connexion Withings :", error);
+      $("withingsMessage").textContent =
+        "Connexion impossible : " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $("withingsSync").addEventListener("click", async () => {
+    const { data: { session } } = await client.auth.getSession();
+
+    if (!session) {
+      showAuth("Connecte-toi d'abord à FORME.");
+      return;
+    }
+
+    const button = $("withingsSync");
+    button.disabled = true;
+    $("withingsMessage").textContent =
+      "Synchronisation Withings en cours…";
+
+    try {
+      const { data, error } = await client.functions.invoke(
+        "withings-sync",
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(data?.error || "La synchronisation a échoué.");
       }
-    );
 
-    if (error) throw error;
-    if (!data?.url) throw new Error("URL Withings manquante.");
+      $("withingsMessage").textContent =
+        `Synchronisation terminée : ${data.measurements_saved} mesures enregistrées sur ${data.measurements_received} reçues.`;
 
-    window.location.href = data.url;
-  } catch (error) {
-    console.error("Erreur connexion Withings :", error);
-    showAuth("Connexion Withings impossible : " + error.message);
-  }
-});
+      await loadDashboard(session);
+
+    } catch (error) {
+      console.error("Erreur synchronisation Withings :", error);
+      $("withingsMessage").textContent =
+        "Échec : " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   
   $("weightForm").addEventListener("submit", async e => {
     e.preventDefault();
