@@ -27,8 +27,10 @@
     <h1>Bienvenue dans FORME.</h1>
     <p class="muted">Connecte-toi avec ton compte personnel.</p>
     <form id="loginForm">
-      <label for="email">Adresse e-mail</label><input id="email" type="email" autocomplete="username" required>
-      <label for="password">Mot de passe</label><input id="password" type="password" autocomplete="current-password" required>
+      <label for="email">Adresse e-mail</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">Mot de passe</label>
+      <input id="password" type="password" autocomplete="current-password" required>
       <button class="primary" type="submit">Se connecter</button>
     </form>
     <p id="authMessage" class="message" role="status"></p>
@@ -47,7 +49,7 @@
 
     <div class="grid">
       <article class="tile"><span class="tile-icon">⚖️</span><p class="tile-label">Dernier poids Withings</p><strong class="metric" id="weightValue">—</strong><small id="weightDate">Aucune mesure Withings</small></article>
-      <article class="tile"><span class="tile-icon">🔥</span><p class="tile-label">Calories aujourd'hui</p><strong class="metric" id="caloriesValue">0</strong><small id="caloriesTarget">Objectif en cours de calcul</small></article>
+      <article class="tile"><span class="tile-icon">🔥</span><p class="tile-label">Calories aujourd'hui</p><strong class="metric" id="caloriesValue">0</strong><small id="calorieTarget">Objectif en cours de calcul</small></article>
       <article class="tile"><span class="tile-icon">🥚</span><p class="tile-label">Protéines aujourd'hui</p><strong class="metric" id="proteinValue">0 g</strong><small id="proteinTarget">Objectif : 160 g</small></article>
       <article class="tile"><span class="tile-icon">🏋️</span><p class="tile-label">Séances cette semaine</p><strong class="metric" id="workoutsValue">0</strong><small>Hevy et saisies manuelles</small></article>
     </div>
@@ -63,7 +65,7 @@
         <div class="composition-metric"><small>Graisse viscérale</small><strong id="compVisceral">—</strong></div>
         <div class="composition-metric"><small>Hydratation (ratio calculé)</small><strong id="compWater">—</strong></div>
       </div>
-      <p class="footnote">Dernière pesée Withings disponible. Le ratio hydrique est calculé à partir de la masse d'hydratation divisée par le poids ; ce n'est pas un pourcentage directement fourni par Withings.</p>
+      <p class="footnote">Dernière pesée Withings disponible. Le ratio hydrique est calculé à partir de la masse d'hydratation divisée par le poids.</p>
     </article>
 
     <div class="section-title"><div><p class="eyebrow">HISTORIQUE WITHINGS</p><h2>Évolution corporelle</h2></div></div>
@@ -76,30 +78,47 @@
       <div class="chart-block"><div class="chart-heading"><strong>Poids</strong><span id="weightChange" class="chart-change">—</span></div><div id="weightChart" class="chart-host"><p class="muted">Chargement…</p></div></div>
       <div class="chart-block"><div class="chart-heading"><strong>Masse grasse (%)</strong><span id="fatChange" class="chart-change">—</span></div><div id="fatChart" class="chart-host"><p class="muted">Chargement…</p></div></div>
       <div class="chart-block"><div class="chart-heading"><strong>Masse musculaire (kg)</strong><span id="muscleChange" class="chart-change">—</span></div><div id="muscleChart" class="chart-host"><p class="muted">Chargement…</p></div></div>
-      <p class="footnote">Chaque point représente une pesée Withings réelle. Les valeurs absentes restent absentes. Les variations quotidiennes peuvent notamment refléter l'hydratation.</p>
+      <p class="footnote">Chaque point représente une pesée Withings réelle. Les valeurs absentes restent absentes.</p>
     </article>
 
-    <div class="section-title"><div><p class="eyebrow">SUIVI QUOTIDIEN</p><h2>Nutrition</h2></div><span class="badge" id="nutritionStatus">Données manuelles</span></div>
+    <div class="section-title"><div><p class="eyebrow">SUIVI QUOTIDIEN</p><h2>Nutrition</h2></div><span class="badge" id="nutritionStatus">Données manuelles et scan</span></div>
+
     <article class="panel">
-      <div class="macro-row"><span>Protéines</span><strong id="proteinMacro">0 / 160 g</strong></div><div class="progress"><span id="proteinBar"></span></div>
-      <div class="macro-row"><span>Calories</span><strong id="calorieMacro">0 / — kcal</strong></div><div class="progress"><span id="calorieBar"></span></div>
-      <p class="footnote">Objectifs provisoires calculés à partir du profil et du dernier poids Withings.</p>
+      <p class="eyebrow">AJOUTER UN ALIMENT</p>
+      <h2>Scanner un code-barres</h2>
+      <p class="muted">Utilise l'appareil photo de ton iPhone pour identifier un produit alimentaire.</p>
+
+      <button id="startScanner" class="primary" type="button">📷 Scanner un produit</button>
+
+      <div id="scannerPanel" class="scanner-panel hidden">
+        <video id="scannerVideo" autoplay muted playsinline></video>
+        <p id="scannerMessage" class="message" role="status">Initialisation de la caméra…</p>
+        <button id="stopScanner" class="quiet" type="button">Arrêter le scanner</button>
+      </div>
+
+      <div id="scannedProduct" class="scanned-product hidden">
+        <h3 id="scannedProductName">Produit détecté</h3>
+        <p id="scannedProductDetails" class="muted"></p>
+        <div class="form-grid">
+          <div><label for="scanCalories">Calories / 100 g</label><input id="scanCalories" type="number" min="0" step="0.1"></div>
+          <div><label for="scanProtein">Protéines / 100 g</label><input id="scanProtein" type="number" min="0" step="0.1"></div>
+          <div><label for="scanCarbs">Glucides / 100 g</label><input id="scanCarbs" type="number" min="0" step="0.1"></div>
+          <div><label for="scanFat">Lipides / 100 g</label><input id="scanFat" type="number" min="0" step="0.1"></div>
+        </div>
+        <label for="scanQuantity">Quantité consommée (g)</label>
+        <input id="scanQuantity" type="number" min="1" step="1" value="100">
+        <div id="scanPreview" class="scan-preview">Valeurs pour la portion : 100 g</div>
+        <button id="addScannedProduct" class="primary" type="button">Ajouter au journal</button>
+        <button id="cancelScannedProduct" class="quiet" type="button">Annuler</button>
+      </div>
     </article>
 
-    <div class="section-title"><div><p class="eyebrow">DONNÉES CORPORELLES</p><h2>Ajouter une pesée manuelle</h2></div></div>
     <article class="panel">
-      <form id="weightForm" class="inline-form">
-        <div class="field"><label for="weightInput">Poids (kg)</label><input id="weightInput" type="number" min="30" max="300" step="0.1" placeholder="Ex. 79.8" required></div>
-        <button class="primary compact" type="submit">Enregistrer</button>
-      </form>
-      <p id="weightMessage" class="message" role="status"></p>
-      <p class="footnote">Les pesées manuelles sont conservées séparément et ne remplacent pas les mesures Withings.</p>
-    </article>
-
-    <div class="section-title"><div><p class="eyebrow">JOURNAL ALIMENTAIRE</p><h2>Ajouter une consommation</h2></div></div>
-    <article class="panel">
+      <p class="eyebrow">SAISIE MANUELLE</p>
+      <h2>Ajouter une consommation</h2>
       <form id="foodForm">
-        <label for="foodName">Aliment ou repas</label><input id="foodName" required maxlength="120" placeholder="Ex. Skyr, sandwich poulet…">
+        <label for="foodName">Aliment ou repas</label>
+        <input id="foodName" required maxlength="120" placeholder="Ex. Skyr, sandwich poulet…">
         <div class="form-grid">
           <div><label for="foodKcal">Calories (kcal)</label><input id="foodKcal" type="number" min="0" step="1" required></div>
           <div><label for="foodProtein">Protéines (g)</label><input id="foodProtein" type="number" min="0" step="0.1" required></div>
@@ -113,6 +132,16 @@
 
     <div class="section-title"><div><p class="eyebrow">AUJOURD'HUI</p><h2>Historique alimentaire</h2></div><span class="badge" id="foodCount">0 entrée</span></div>
     <article class="panel"><div id="foodHistory"><p class="muted">Aucune consommation enregistrée aujourd'hui.</p></div></article>
+
+    <div class="section-title"><div><p class="eyebrow">DONNÉES CORPORELLES</p><h2>Ajouter une pesée manuelle</h2></div></div>
+    <article class="panel">
+      <form id="weightForm" class="inline-form">
+        <div class="field"><label for="weightInput">Poids (kg)</label><input id="weightInput" type="number" min="30" max="300" step="0.1" placeholder="Ex. 79.8" required></div>
+        <button class="primary compact" type="submit">Enregistrer</button>
+      </form>
+      <p id="weightMessage" class="message" role="status"></p>
+      <p class="footnote">Les pesées manuelles restent séparées des mesures Withings.</p>
+    </article>
 
     <div class="section-title"><div><p class="eyebrow">SOURCES CONNECTÉES</p><h2>Sport & récupération</h2></div></div>
     <div class="grid">
@@ -141,7 +170,9 @@
   </section>
   <footer>FORME V2 · Tableau de bord personnel</footer>
 </main>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script src="./config.js"></script>
 <script src="./app.js"></script>
 </body>
