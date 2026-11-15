@@ -289,32 +289,48 @@ async function saveFood(event) {
 
   showMessage("foodMessage", "Enregistrement…");
 
-  const row = {
-    user_id: currentUser.id,
-    food_name: $("foodName").value.trim(),
-    calories: Number($("foodKcal").value),
-    protein_g: Number($("foodProtein").value),
-    carbs_g: Number($("foodCarbs").value || 0),
-    fat_g: Number($("foodFat").value || 0),
-    consumed_at: new Date().toISOString()
-  };
+  const quantity = Number($("foodQuantity").value);
 
-  const { error } = await client.from("nutrition_logs").insert(row);
-
-  button.disabled = false;
-
-  if (error) {
-    console.error(error);
-    showMessage("foodMessage", `Erreur : ${error.message}`, true);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showMessage("foodMessage", "Indique une quantité valide.", true);
+    button.disabled = false;
     return;
   }
 
-  $("foodForm").reset();
-  $("foodCarbs").value = "0";
-  $("foodFat").value = "0";
+  const row = {
+    user_id: currentUser.id,
+    product_name_snapshot: $("foodName").value.trim(),
+    quantity_g: quantity,
+    kcal: Number($("foodKcal").value),
+    protein_g: Number($("foodProtein").value),
+    carbs_g: Number($("foodCarbs").value || 0),
+    fat_g: Number($("foodFat").value || 0)
+  };
 
-  showMessage("foodMessage", "Aliment ajouté.");
-  await loadNutrition();
+  try {
+    const { error } = await client
+      .from("nutrition_logs")
+      .insert(row);
+
+    if (error) throw error;
+
+    $("foodForm").reset();
+
+    const refreshed = await loadNutrition();
+
+    showMessage(
+      "foodMessage",
+      refreshed
+        ? "Consommation enregistrée."
+        : "Consommation enregistrée, mais actualisation impossible."
+    );
+
+  } catch (error) {
+    console.error("Erreur saisie manuelle :", error);
+    showMessage("foodMessage", `Erreur : ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function deleteFood(id) {
