@@ -2,8 +2,7 @@
 const $ = id => document.getElementById(id);
 
 const SUPABASE_URL = window.FORME_CONFIG?.SUPABASE_URL;
-const SUPABASE_ANON_KEY = window.FORME_CONFIG?.SUPABASE_ANON_KEY;
-
+const SUPABASE_ANON_KEY = window.FORME_CONFIG?.SUPABASE_PUBLISHABLE_KEY;
 let client = null;
 let currentUser = null;
 let currentProfile = null;
