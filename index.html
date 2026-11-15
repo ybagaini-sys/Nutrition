@@ -105,11 +105,25 @@
           <div><label for="scanCarbs">Glucides / 100 g</label><input id="scanCarbs" type="number" min="0" step="0.1"></div>
           <div><label for="scanFat">Lipides / 100 g</label><input id="scanFat" type="number" min="0" step="0.1"></div>
         </div>
-        <label for="scanQuantity">Quantité consommée (g)</label>
-        <input id="scanQuantity" type="number" min="1" step="1" value="100">
-        <div id="scanPreview" class="scan-preview">Valeurs pour la portion : 100 g</div>
-        <button id="addScannedProduct" class="primary" type="button">Ajouter au journal</button>
-        <button id="cancelScannedProduct" class="quiet" type="button">Annuler</button>
+        <label for="scanQuantity">Quantité réellement consommée (g) *</label>
+<input
+  id="scanQuantity"
+  type="number"
+  min="1"
+  step="1"
+  placeholder="Ex. 150"
+  required
+>
+<div id="scanPreview" class="scan-preview">
+  Saisis la quantité consommée pour calculer les macros.
+</div>
+<p id="scanSaveMessage" class="message" role="status"></p>
+<button id="addScannedProduct" class="primary" type="button">
+  Ajouter au journal
+</button>
+<button id="cancelScannedProduct" class="quiet" type="button">
+  Annuler
+</button>
       </div>
     </article>
 
