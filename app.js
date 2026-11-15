@@ -3,15 +3,21 @@ const $ = id => document.getElementById(id);
 
 const SUPABASE_URL = window.FORME_CONFIG?.SUPABASE_URL;
 const SUPABASE_ANON_KEY = window.FORME_CONFIG?.SUPABASE_PUBLISHABLE_KEY;
+
+const TARGET_WEIGHT = 72;
+const TARGET_PROTEIN = 160;
+const CALORIE_TARGET = 2200;
+
 let client = null;
 let currentUser = null;
 let currentProfile = null;
 let currentPeriod = 7;
 let withingsRows = [];
 let todayFoods = [];
-
-const TARGET_WEIGHT = 72;
-const TARGET_PROTEIN = 160;
+let scannerReader = null;
+let scannerControls = null;
+let scannedProductData = null;
+let scannerBusy = false;
 
 function setText(id, value) {
   const el = $(id);
@@ -49,13 +55,6 @@ function kg(value) {
 
 function pct(value) {
   return value === null || value === undefined ? "—" : `${number(value)} %`;
-}
-
-function getLocalDateString(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
 }
 
 function getStartOfToday() {
@@ -102,7 +101,10 @@ async function init() {
     return;
   }
 
-  client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  client = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+  );
 
   $("loginForm")?.addEventListener("submit", login);
   $("logoutButton")?.addEventListener("click", logout);
@@ -111,6 +113,16 @@ async function init() {
   $("foodForm")?.addEventListener("submit", saveFood);
   $("withingsConnect")?.addEventListener("click", connectWithings);
   $("withingsSync")?.addEventListener("click", syncWithings);
+
+  $("startScanner")?.addEventListener("click", startScanner);
+  $("stopScanner")?.addEventListener("click", stopScanner);
+  $("addScannedProduct")?.addEventListener("click", addScannedProduct);
+  $("cancelScannedProduct")?.addEventListener("click", cancelScannedProduct);
+
+  ["scanCalories", "scanProtein", "scanCarbs", "scanFat", "scanQuantity"]
+    .forEach(id => {
+      $(id)?.addEventListener("input", updateScanPreview);
+    });
 
   document.querySelectorAll(".period-button").forEach(button => {
     button.addEventListener("click", () => {
@@ -123,6 +135,7 @@ async function init() {
   });
 
   const { data, error } = await client.auth.getSession();
+
   if (error) {
     setConnection(false, "Erreur de connexion");
     showMessage("authMessage", error.message, true);
@@ -139,9 +152,11 @@ async function init() {
 
   client.auth.onAuthStateChange(async (_event, session) => {
     currentUser = session?.user || null;
+
     if (currentUser) {
       await loadDashboard();
     } else {
+      stopScanner();
       showDashboard(false);
       setConnection(false, "Non connecté");
     }
@@ -172,7 +187,10 @@ async function login(event) {
 
 async function logout() {
   if (!client) return;
+
+  stopScanner();
   await client.auth.signOut();
+
   currentUser = null;
   showDashboard(false);
   setConnection(false, "Non connecté");
@@ -183,6 +201,7 @@ async function loadDashboard() {
 
   showDashboard(true);
   setConnection(true, "Connecté");
+
   setText("userLabel", currentUser.email || "Espace personnel");
   setText("todayLabel", formatDate(new Date(), {
     weekday: "long",
@@ -220,9 +239,14 @@ async function loadProfile() {
   const height = Number(currentProfile.height_cm || 178);
   const dob = currentProfile.date_of_birth || "1980-08-04";
   const birth = new Date(`${dob}T12:00:00`);
+
   let age = new Date().getFullYear() - birth.getFullYear();
   const monthDiff = new Date().getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && new Date().getDate() < birth.getDate())) age--;
+
+  if (
+    monthDiff < 0 ||
+    (monthDiff === 0 && new Date().getDate() < birth.getDate())
+  ) age--;
 
   setText("ageValue", `${age} ans`);
   setText("heightValue", `${number(height, 0)} cm`);
@@ -232,13 +256,11 @@ async function loadProfile() {
 }
 
 async function loadNutrition() {
-  const start = getStartOfToday();
-
   const { data, error } = await client
     .from("nutrition_logs")
     .select("*")
     .eq("user_id", currentUser.id)
-    .gte("consumed_at", start)
+    .gte("consumed_at", getStartOfToday())
     .order("consumed_at", { ascending: false });
 
   if (error) {
@@ -251,28 +273,45 @@ async function loadNutrition() {
 }
 
 function renderNutrition() {
-  const calories = todayFoods.reduce((sum, item) => sum + Number(item.calories || 0), 0);
-  const protein = todayFoods.reduce((sum, item) => sum + Number(item.protein_g || 0), 0);
-  const calorieTarget = 2200;
+  const calories = todayFoods.reduce(
+    (sum, item) => sum + Number(item.calories || 0), 0
+  );
+
+  const protein = todayFoods.reduce(
+    (sum, item) => sum + Number(item.protein_g || 0), 0
+  );
 
   setText("caloriesValue", Math.round(calories).toLocaleString("fr-CH"));
   setText("proteinValue", `${number(protein, 0)} g`);
   setText("proteinMacro", `${number(protein, 0)} / ${TARGET_PROTEIN} g`);
-  setText("calorieMacro", `${Math.round(calories)} / ${calorieTarget} kcal`);
-  setText("calorieTarget", `Objectif provisoire : ${calorieTarget} kcal`);
-  setText("targetCaloriesValue", `${calorieTarget} kcal`);
-  setText("foodCount", `${todayFoods.length} entrée${todayFoods.length > 1 ? "s" : ""}`);
+  setText("calorieMacro", `${Math.round(calories)} / ${CALORIE_TARGET} kcal`);
+  setText("calorieTarget", `Objectif provisoire : ${CALORIE_TARGET} kcal`);
+  setText("targetCaloriesValue", `${CALORIE_TARGET} kcal`);
+
+  setText(
+    "foodCount",
+    `${todayFoods.length} entrée${todayFoods.length > 1 ? "s" : ""}`
+  );
 
   const proteinBar = $("proteinBar");
   const calorieBar = $("calorieBar");
-  if (proteinBar) proteinBar.style.width = `${Math.min(100, protein / TARGET_PROTEIN * 100)}%`;
-  if (calorieBar) calorieBar.style.width = `${Math.min(100, calories / calorieTarget * 100)}%`;
+
+  if (proteinBar) {
+    proteinBar.style.width =
+      `${Math.min(100, protein / TARGET_PROTEIN * 100)}%`;
+  }
+
+  if (calorieBar) {
+    calorieBar.style.width =
+      `${Math.min(100, calories / CALORIE_TARGET * 100)}%`;
+  }
 
   const history = $("foodHistory");
   if (!history) return;
 
   if (!todayFoods.length) {
-    history.innerHTML = '<p class="muted">Aucune consommation enregistrée aujourd’hui.</p>';
+    history.innerHTML =
+      '<p class="muted">Aucune consommation enregistrée aujourd’hui.</p>';
     return;
   }
 
@@ -280,21 +319,34 @@ function renderNutrition() {
     <div class="food-entry">
       <div class="food-info">
         <strong>${escapeHTML(item.food_name || item.name || "Aliment")}</strong>
-        <small>${formatDate(item.consumed_at, { hour: "2-digit", minute: "2-digit" })} · ${Math.round(Number(item.calories || 0))} kcal · ${number(item.protein_g || 0)} g protéines</small>
+        <small>
+          ${formatDate(item.consumed_at, {
+            hour: "2-digit",
+            minute: "2-digit"
+          })}
+          · ${Math.round(Number(item.calories || 0))} kcal
+          · ${number(item.protein_g || 0)} g protéines
+        </small>
       </div>
-      <button class="delete-button" type="button" data-delete-food="${escapeHTML(item.id)}" aria-label="Supprimer">×</button>
+      <button class="delete-button" type="button"
+        data-delete-food="${escapeHTML(item.id)}"
+        aria-label="Supprimer">×</button>
     </div>
   `).join("");
 
   history.querySelectorAll("[data-delete-food]").forEach(button => {
-    button.addEventListener("click", () => deleteFood(button.dataset.deleteFood));
+    button.addEventListener("click", () => {
+      deleteFood(button.dataset.deleteFood);
+    });
   });
 }
 
 async function saveFood(event) {
   event.preventDefault();
+
   const button = $("foodForm").querySelector('button[type="submit"]');
   button.disabled = true;
+
   showMessage("foodMessage", "Enregistrement…");
 
   const row = {
@@ -308,6 +360,7 @@ async function saveFood(event) {
   };
 
   const { error } = await client.from("nutrition_logs").insert(row);
+
   button.disabled = false;
 
   if (error) {
@@ -319,6 +372,7 @@ async function saveFood(event) {
   $("foodForm").reset();
   $("foodCarbs").value = "0";
   $("foodFat").value = "0";
+
   showMessage("foodMessage", "Aliment ajouté.");
   await loadNutrition();
 }
@@ -341,12 +395,11 @@ async function deleteFood(id) {
 }
 
 async function loadWorkouts() {
-  const start = getStartOfWeek();
   const { count, error } = await client
     .from("strength_workouts")
     .select("*", { count: "exact", head: true })
     .eq("user_id", currentUser.id)
-    .gte("started_at", start);
+    .gte("started_at", getStartOfWeek());
 
   if (error) {
     console.error("Erreur séances", error);
@@ -381,7 +434,9 @@ async function loadWithings() {
 }
 
 function renderLatestWithings() {
-  const latest = withingsRows.find(row => row.weight_kg !== null && row.weight_kg !== undefined);
+  const latest = withingsRows.find(row =>
+    row.weight_kg !== null && row.weight_kg !== undefined
+  );
 
   if (!latest) {
     setText("weightValue", "—");
@@ -393,6 +448,7 @@ function renderLatestWithings() {
   }
 
   setText("weightValue", kg(latest.weight_kg));
+
   setText("weightDate", formatDate(latest.measured_at, {
     day: "numeric",
     month: "short",
@@ -400,24 +456,38 @@ function renderLatestWithings() {
     hour: "2-digit",
     minute: "2-digit"
   }));
+
   setText("compWeight", kg(latest.weight_kg));
   setText("compFatPct", pct(latest.body_fat_pct));
   setText("compFatKg", latest.fat_mass_kg == null ? "—" : kg(latest.fat_mass_kg));
   setText("compMuscle", kg(latest.muscle_mass_kg));
   setText("compLean", kg(latest.lean_mass_kg));
   setText("compBone", kg(latest.bone_mass_kg));
-  setText("compVisceral", latest.visceral_fat_index == null ? "—" : number(latest.visceral_fat_index, 0));
+
+  setText(
+    "compVisceral",
+    latest.visceral_fat_index == null
+      ? "—"
+      : number(latest.visceral_fat_index, 0)
+  );
+
   setText("compWater", pct(latest.water_pct));
+
   setText("compositionDate", formatDate(latest.measured_at, {
     day: "numeric",
     month: "short",
     year: "numeric"
   }));
-  setText("weightProgress", `Écart avec ton objectif : ${number(Number(latest.weight_kg) - TARGET_WEIGHT)} kg`);
+
+  setText(
+    "weightProgress",
+    `Écart avec ton objectif : ${number(Number(latest.weight_kg) - TARGET_WEIGHT)} kg`
+  );
 }
 
 async function saveManualWeight(event) {
   event.preventDefault();
+
   const value = Number($("weightInput").value);
 
   if (!Number.isFinite(value) || value < 30 || value > 300) {
@@ -439,14 +509,21 @@ async function saveManualWeight(event) {
   }
 
   $("weightForm").reset();
-  showMessage("weightMessage", "Pesée manuelle enregistrée. Elle reste séparée de Withings.");
+
+  showMessage(
+    "weightMessage",
+    "Pesée manuelle enregistrée. Elle reste séparée de Withings."
+  );
 }
 
 function renderCharts() {
-  const cutoff = Date.now() - currentPeriod * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - currentPeriod * 86400000;
+
   const rows = withingsRows
     .filter(row => new Date(row.measured_at).getTime() >= cutoff)
-    .sort((a, b) => new Date(a.measured_at) - new Date(b.measured_at));
+    .sort((a, b) =>
+      new Date(a.measured_at) - new Date(b.measured_at)
+    );
 
   renderSingleChart("weightChart", rows, "weight_kg", "kg", "weightChange");
   renderSingleChart("fatChart", rows, "body_fat_pct", "%", "fatChange");
@@ -457,10 +534,15 @@ function renderSingleChart(containerId, rows, key, unit, changeId) {
   const host = $(containerId);
   if (!host) return;
 
-  const points = rows.filter(row => row[key] !== null && row[key] !== undefined && Number.isFinite(Number(row[key])));
+  const points = rows.filter(row =>
+    row[key] !== null &&
+    row[key] !== undefined &&
+    Number.isFinite(Number(row[key]))
+  );
 
   if (!points.length) {
-    host.innerHTML = '<p class="muted">Pas encore assez de mesures Withings sur cette période.</p>';
+    host.innerHTML =
+      '<p class="muted">Pas encore assez de mesures Withings sur cette période.</p>';
     setText(changeId, "—");
     return;
   }
@@ -470,14 +552,17 @@ function renderSingleChart(containerId, rows, key, unit, changeId) {
   const max = Math.max(...values);
   const range = Math.max(max - min, unit === "%" ? 0.5 : 0.3);
   const pad = range * 0.18;
+
   const low = min - pad;
   const high = max + pad;
+
   const width = 600;
   const height = 150;
   const left = 44;
   const right = 12;
   const top = 12;
   const bottom = 26;
+
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
 
@@ -485,7 +570,10 @@ function renderSingleChart(containerId, rows, key, unit, changeId) {
     const x = points.length === 1
       ? left + plotWidth / 2
       : left + index / (points.length - 1) * plotWidth;
-    const y = top + (high - Number(row[key])) / (high - low) * plotHeight;
+
+    const y =
+      top + (high - Number(row[key])) / (high - low) * plotHeight;
+
     return { x, y, row, value: Number(row[key]) };
   });
 
@@ -494,35 +582,344 @@ function renderSingleChart(containerId, rows, key, unit, changeId) {
   ).join(" ");
 
   const circles = coords.map(point =>
-    `<circle cx="${point.x}" cy="${point.y}" r="3.5"><title>${number(point.value)} ${unit} · ${formatDate(point.row.measured_at, { day: "numeric", month: "short" })}</title></circle>`
+    `<circle cx="${point.x}" cy="${point.y}" r="3.5">
+      <title>${number(point.value)} ${unit} · ${formatDate(point.row.measured_at, {
+        day: "numeric",
+        month: "short"
+      })}</title>
+    </circle>`
   ).join("");
 
-  const first = values[0];
-  const last = values[values.length - 1];
-  const difference = last - first;
+  const difference = values[values.length - 1] - values[0];
   const sign = difference > 0 ? "+" : "";
+
   setText(changeId, `${sign}${number(difference)} ${unit}`);
 
-  const startLabel = formatDate(points[0].measured_at, { day: "numeric", month: "short" });
-  const endLabel = formatDate(points[points.length - 1].measured_at, { day: "numeric", month: "short" });
+  const startLabel = formatDate(points[0].measured_at, {
+    day: "numeric",
+    month: "short"
+  });
+
+  const endLabel = formatDate(points[points.length - 1].measured_at, {
+    day: "numeric",
+    month: "short"
+  });
 
   host.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Évolution ${key}">
-      <line class="chart-gridline" x1="${left}" y1="${top + plotHeight / 2}" x2="${width - right}" y2="${top + plotHeight / 2}"></line>
-      <line class="chart-gridline" x1="${left}" y1="${top + plotHeight}" x2="${width - right}" y2="${top + plotHeight}"></line>
+    <svg viewBox="0 0 ${width} ${height}" role="img">
+      <line class="chart-gridline"
+        x1="${left}" y1="${top + plotHeight / 2}"
+        x2="${width - right}" y2="${top + plotHeight / 2}"></line>
+      <line class="chart-gridline"
+        x1="${left}" y1="${top + plotHeight}"
+        x2="${width - right}" y2="${top + plotHeight}"></line>
       <text class="chart-axis" x="2" y="${top + 4}">${number(high)}</text>
       <text class="chart-axis" x="2" y="${top + plotHeight}">${number(low)}</text>
       <path class="chart-line" d="${path}"></path>
       ${circles}
       <text class="chart-axis" x="${left}" y="${height - 4}">${startLabel}</text>
-      <text class="chart-axis" text-anchor="end" x="${width - right}" y="${height - 4}">${endLabel}</text>
+      <text class="chart-axis" text-anchor="end"
+        x="${width - right}" y="${height - 4}">${endLabel}</text>
     </svg>
-    <div class="chart-latest">${number(last)} ${unit} · ${points.length} mesure${points.length > 1 ? "s" : ""}</div>
+    <div class="chart-latest">
+      ${number(values[values.length - 1])} ${unit} ·
+      ${points.length} mesure${points.length > 1 ? "s" : ""}
+    </div>
   `;
 }
 
+/* =====================================================
+   SCANNER EAN - ZXING - OPEN FOOD FACTS
+===================================================== */
+
+async function startScanner() {
+  if (scannerControls || scannerBusy) return;
+
+  const video = $("scannerVideo");
+  const panel = $("scannerPanel");
+
+  if (!video || !panel) return;
+
+  if (!window.ZXing?.BrowserMultiFormatReader) {
+    showMessage(
+      "scannerMessage",
+      "Le lecteur ZXing n'a pas pu être chargé. Vérifie ta connexion Internet.",
+      true
+    );
+    panel.classList.remove("hidden");
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    panel.classList.remove("hidden");
+    showMessage(
+      "scannerMessage",
+      "La caméra nécessite une connexion sécurisée HTTPS et un navigateur compatible.",
+      true
+    );
+    return;
+  }
+
+  scannerBusy = true;
+  panel.classList.remove("hidden");
+  $("scannedProduct")?.classList.add("hidden");
+
+  showMessage(
+    "scannerMessage",
+    "Demande d'autorisation de la caméra…"
+  );
+
+  try {
+    scannerReader = new ZXing.BrowserMultiFormatReader();
+
+    scannerControls = await scannerReader.decodeFromConstraints(
+      {
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" }
+        }
+      },
+      video,
+      async (result, error) => {
+        if (result && !scannerBusy) {
+          scannerBusy = true;
+          const barcode = result.getText();
+
+          await stopScanner();
+          await lookupOpenFoodFacts(barcode);
+        }
+      }
+    );
+
+    scannerBusy = false;
+
+    showMessage(
+      "scannerMessage",
+      "Place le code-barres devant la caméra."
+    );
+
+  } catch (error) {
+    console.error("Erreur caméra", error);
+    scannerBusy = false;
+    await stopScanner();
+
+    panel.classList.remove("hidden");
+
+    showMessage(
+      "scannerMessage",
+      `Impossible d'ouvrir la caméra : ${error.message || "autorisation refusée"}.`,
+      true
+    );
+  }
+}
+
+async function stopScanner() {
+  scannerBusy = true;
+
+  try {
+    if (scannerControls) {
+      scannerControls.stop();
+      scannerControls = null;
+    }
+
+    if (scannerReader) {
+      scannerReader.reset();
+      scannerReader = null;
+    }
+
+    const video = $("scannerVideo");
+
+    if (video?.srcObject) {
+      video.srcObject.getTracks().forEach(track => track.stop());
+      video.srcObject = null;
+    }
+  } catch (error) {
+    console.warn("Arrêt caméra", error);
+  }
+
+  scannerBusy = false;
+
+  $("scannerPanel")?.classList.add("hidden");
+}
+
+async function lookupOpenFoodFacts(barcode) {
+  showMessage("scanSaveMessage", "");
+  $("scannedProduct")?.classList.add("hidden");
+
+  showMessage("scannerMessage", "Recherche du produit…");
+
+  try {
+    const url =
+      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`;
+
+    const response = await fetch(url, {
+      headers: {
+        "Accept": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error("La base de produits est momentanément indisponible.");
+    }
+
+    const result = await response.json();
+
+    if (result.status !== 1 || !result.product) {
+      $("scannerPanel")?.classList.remove("hidden");
+
+      showMessage(
+        "scannerMessage",
+        `Produit ${barcode} introuvable dans Open Food Facts. Tu peux utiliser la saisie manuelle.`,
+        true
+      );
+      return;
+    }
+
+    const product = result.product;
+    const nutriments = product.nutriments || {};
+
+    const kcal = nutriments["energy-kcal_100g"] ??
+      (nutriments["energy-kj_100g"] != null
+        ? Number(nutriments["energy-kj_100g"]) / 4.184
+        : null);
+
+    scannedProductData = {
+      barcode,
+      name: product.product_name || product.product_name_fr || "Produit sans nom",
+      brand: product.brands || "",
+      kcal: kcal == null ? 0 : Number(kcal),
+      protein: Number(nutriments.proteins_100g || 0),
+      carbs: Number(nutriments.carbohydrates_100g || 0),
+      fat: Number(nutriments.fat_100g || 0)
+    };
+
+    showScannedProduct();
+  } catch (error) {
+    console.error("Recherche Open Food Facts", error);
+
+    $("scannerPanel")?.classList.remove("hidden");
+
+    showMessage(
+      "scannerMessage",
+      `Erreur de recherche : ${error.message}`,
+      true
+    );
+  }
+}
+
+function showScannedProduct() {
+  const product = scannedProductData;
+  if (!product) return;
+
+  setText("scannedProductName", product.name);
+  setText(
+    "scannedProductDetails",
+    product.brand ? `Marque : ${product.brand}` : "Marque non renseignée"
+  );
+  setText("scannedProductCode", `Code-barres EAN : ${product.barcode}`);
+
+  $("scanCalories").value = product.kcal;
+  $("scanProtein").value = product.protein;
+  $("scanCarbs").value = product.carbs;
+  $("scanFat").value = product.fat;
+  $("scanQuantity").value = 100;
+
+  $("scannerPanel")?.classList.add("hidden");
+  $("scannedProduct")?.classList.remove("hidden");
+
+  updateScanPreview();
+}
+
+function updateScanPreview() {
+  const quantity = Math.max(0, Number($("scanQuantity")?.value || 0));
+  const factor = quantity / 100;
+
+  const kcal = Number($("scanCalories")?.value || 0) * factor;
+  const protein = Number($("scanProtein")?.value || 0) * factor;
+  const carbs = Number($("scanCarbs")?.value || 0) * factor;
+  const fat = Number($("scanFat")?.value || 0) * factor;
+
+  setText(
+    "scanPreview",
+    `Pour ${number(quantity, 0)} g : ${number(kcal, 0)} kcal · ` +
+    `${number(protein)} g protéines · ${number(carbs)} g glucides · ` +
+    `${number(fat)} g lipides`
+  );
+}
+
+async function addScannedProduct() {
+  if (!scannedProductData || !currentUser) return;
+
+  const quantity = Number($("scanQuantity").value);
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showMessage("scanSaveMessage", "Indique une quantité valide.", true);
+    return;
+  }
+
+  const factor = quantity / 100;
+
+  const button = $("addScannedProduct");
+  button.disabled = true;
+
+  showMessage("scanSaveMessage", "Ajout au journal…");
+
+  const row = {
+    user_id: currentUser.id,
+    food_name: scannedProductData.name,
+    calories: Number($("scanCalories").value || 0) * factor,
+    protein_g: Number($("scanProtein").value || 0) * factor,
+    carbs_g: Number($("scanCarbs").value || 0) * factor,
+    fat_g: Number($("scanFat").value || 0) * factor,
+    consumed_at: new Date().toISOString()
+  };
+
+  try {
+    const { error } = await client
+      .from("nutrition_logs")
+      .insert(row);
+
+    if (error) throw error;
+
+    showMessage(
+      "scanSaveMessage",
+      `${scannedProductData.name} ajouté au journal.`
+    );
+
+    scannedProductData = null;
+
+    await loadNutrition();
+
+    setTimeout(() => {
+      $("scannedProduct")?.classList.add("hidden");
+    }, 1200);
+
+  } catch (error) {
+    console.error("Ajout produit scanné", error);
+    showMessage(
+      "scanSaveMessage",
+      `Impossible d'ajouter le produit : ${error.message}`,
+      true
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function cancelScannedProduct() {
+  scannedProductData = null;
+  $("scannedProduct")?.classList.add("hidden");
+  $("scannerPanel")?.classList.add("hidden");
+  showMessage("scanSaveMessage", "");
+}
+
+/* =====================================================
+   WITHINGS
+===================================================== */
+
 async function connectWithings() {
   showMessage("withingsMessage", "Ouverture de la connexion Withings…");
+
   const { data: sessionData } = await client.auth.getSession();
   const token = sessionData.session?.access_token;
 
@@ -532,12 +929,18 @@ async function connectWithings() {
   }
 
   const { data, error } = await client.functions.invoke("withings-connect", {
-    headers: { Authorization: `Bearer ${token}` }
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
   });
 
   if (error || !data?.url) {
     console.error(error, data);
-    showMessage("withingsMessage", error?.message || "Impossible de démarrer la connexion.", true);
+    showMessage(
+      "withingsMessage",
+      error?.message || "Impossible de démarrer la connexion.",
+      true
+    );
     return;
   }
 
@@ -547,6 +950,7 @@ async function connectWithings() {
 async function syncWithings() {
   const button = $("withingsSync");
   button.disabled = true;
+
   showMessage("withingsMessage", "Synchronisation Withings en cours…");
 
   try {
@@ -556,16 +960,28 @@ async function syncWithings() {
     if (!token) throw new Error("Session expirée. Reconnecte-toi.");
 
     const { data, error } = await client.functions.invoke("withings-sync", {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
     });
 
     if (error) throw error;
 
-    showMessage("withingsMessage", data?.message || `${data?.imported ?? 0} mesure(s) synchronisée(s).`);
+    showMessage(
+      "withingsMessage",
+      data?.message || `${data?.imported ?? 0} mesure(s) synchronisée(s).`
+    );
+
     await loadWithings();
+
   } catch (error) {
     console.error("Synchronisation Withings", error);
-    showMessage("withingsMessage", error.message || "Erreur de synchronisation.", true);
+
+    showMessage(
+      "withingsMessage",
+      error.message || "Erreur de synchronisation.",
+      true
+    );
   } finally {
     button.disabled = false;
   }
