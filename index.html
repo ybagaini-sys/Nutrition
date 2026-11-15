@@ -131,9 +131,25 @@
       <p class="eyebrow">SAISIE MANUELLE</p>
       <h2>Ajouter une consommation</h2>
       <form id="foodForm">
-        <label for="foodName">Aliment ou repas</label>
-        <input id="foodName" required maxlength="120" placeholder="Ex. Skyr, sandwich poulet…">
-        <div class="form-grid">
+  <label for="foodName">Aliment ou repas</label>
+  <input
+    id="foodName"
+    required
+    maxlength="120"
+    placeholder="Ex. Skyr, sandwich poulet…"
+  >
+
+  <label for="foodQuantity">Quantité consommée (g)</label>
+  <input
+    id="foodQuantity"
+    type="number"
+    min="1"
+    step="1"
+    placeholder="Ex. 250"
+    required
+  >
+
+  <div class="form-grid">
           <div><label for="foodKcal">Calories (kcal)</label><input id="foodKcal" type="number" min="0" step="1" required></div>
           <div><label for="foodProtein">Protéines (g)</label><input id="foodProtein" type="number" min="0" step="0.1" required></div>
           <div><label for="foodCarbs">Glucides (g)</label><input id="foodCarbs" type="number" min="0" step="0.1" value="0"></div>
