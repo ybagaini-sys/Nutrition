@@ -129,6 +129,11 @@ async function init() {
   $("refreshButton")?.addEventListener("click", loadDashboard);
   $("weightForm")?.addEventListener("submit", saveManualWeight);
   $("foodForm")?.addEventListener("submit", saveFood);
+  $("foodNutritionBasis")?.addEventListener("change", () => {
+    const unit = $("foodNutritionBasis").value;
+    setText("foodBasisLabel", unit);
+    setText("foodBasisProteinLabel", unit);
+  });
 
   $("withingsConnect")?.addEventListener("click", connectWithings);
   $("withingsSync")?.addEventListener("click", syncWithings);
@@ -153,7 +158,10 @@ async function init() {
     "scanProtein",
     "scanCarbs",
     "scanFat",
-    "scanQuantity"
+    "scanQuantity",
+    "scanQuantityUnit",
+    "scanNutritionBasis",
+    "scanPieceWeight"
   ].forEach(id => {
     $(id)?.addEventListener("input", updateScanPreview);
   });
@@ -396,7 +404,9 @@ function renderNutrition() {
       item.product_name_snapshot || "Aliment"
     );
 
-    const quantity = number(item.quantity_g, 0);
+    const unit = item.quantity_unit || "g";
+    const quantity = number(item.quantity_value ?? item.quantity_g, 1);
+    const unitLabel = unit === "piece" ? "pièce(s)" : unit;
     const kcal = number(item.kcal, 0);
     const proteinValue = number(item.protein_g);
 
@@ -409,7 +419,7 @@ function renderNutrition() {
       <div class="food-history-item">
         <div>
           <strong>${name}</strong>
-          <p class="muted">${time} · ${quantity} g</p>
+          <p class="muted">${time} · ${quantity} ${unitLabel}</p>
           <small>${kcal} kcal · ${proteinValue} g protéines</small>
         </div>
         <button
@@ -456,14 +466,25 @@ async function saveFood(event) {
     return;
   }
 
+  const unit = $("foodQuantityUnit").value;
+  const basis = $("foodNutritionBasis").value;
+  const pieceWeight = Number($("foodPieceWeight").value || 0);
+  if (unit === "piece" && pieceWeight <= 0) { showMessage("foodMessage", "Indique le poids d’une pièce pour calculer les valeurs nutritionnelles.", true); button.disabled = false; return; }
+  if (unit === "ml" && basis !== "ml") { showMessage("foodMessage", "Pour un liquide, renseigne les valeurs pour 100 ml.", true); button.disabled = false; return; }
+  if (unit !== "ml" && basis !== "g") { showMessage("foodMessage", "Pour cet aliment, renseigne les valeurs pour 100 g.", true); button.disabled = false; return; }
+  const nutritionQuantity = unit === "piece" ? quantity * pieceWeight : quantity;
+  const factor = nutritionQuantity / 100;
   const row = {
     user_id: currentUser.id,
     product_name_snapshot: $("foodName").value.trim(),
-    quantity_g: quantity,
-    kcal: Number($("foodKcal").value),
-    protein_g: Number($("foodProtein").value),
-    carbs_g: Number($("foodCarbs").value || 0),
-    fat_g: Number($("foodFat").value || 0)
+    quantity_g: unit === "ml" ? null : nutritionQuantity,
+    quantity_value: quantity,
+    quantity_unit: unit,
+    nutrition_basis_unit: basis,
+    kcal: Number($("foodKcal").value) * factor,
+    protein_g: Number($("foodProtein").value) * factor,
+    carbs_g: Number($("foodCarbs").value || 0) * factor,
+    fat_g: Number($("foodFat").value || 0) * factor
   };
 
   try {
@@ -1094,7 +1115,11 @@ function updateScanPreview() {
     Number($("scanQuantity")?.value || 0)
   );
 
-  const factor = quantity / 100;
+  const unit = $("scanQuantityUnit")?.value || "g";
+  const basis = $("scanNutritionBasis")?.value || "g";
+  const pieceWeight = Number($("scanPieceWeight")?.value || 0);
+  const effectiveQuantity = unit === "piece" ? quantity * pieceWeight : quantity;
+  const factor = effectiveQuantity / 100;
 
   const kcal =
     Number($("scanCalories")?.value || 0) * factor;
@@ -1110,7 +1135,7 @@ function updateScanPreview() {
 
   setText(
     "scanPreview",
-    `Pour ${number(quantity, 0)} g : ${number(kcal, 0)} kcal · ` +
+    `Pour ${number(quantity, 1)} ${unit === "piece" ? "pièce(s)" : unit} : ${number(kcal, 0)} kcal · ` +
     `${number(protein)} g protéines · ${number(carbs)} g glucides · ` +
     `${number(fat)} g lipides`
   );
@@ -1125,7 +1150,7 @@ async function loadFoodLibrary() {
 
   const { data, error } = await client
     .from("food_products")
-    .select("id,user_id,name,brand,barcode,serving_basis_g,kcal,protein_g,carbs_g,fat_g,sugars_g,fiber_g,source")
+    .select("id,user_id,name,brand,barcode,serving_basis_g,serving_basis_value,serving_basis_unit,nutrition_basis_unit,piece_weight_g,kcal,protein_g,carbs_g,fat_g,sugars_g,fiber_g,source")
     .eq("user_id", currentUser.id)
     .order("name", { ascending: true });
 
@@ -1163,7 +1188,7 @@ function renderFoodLibrary() {
     <div class="library-item">
       <div class="library-item-info">
         <strong>${escapeHTML(product.name)}</strong>
-        <small>${escapeHTML(product.brand || "Sans marque")} · ${number(product.kcal, 0)} kcal · ${number(product.protein_g)} g protéines / 100 g</small>
+        <small>${escapeHTML(product.brand || "Sans marque")} · ${number(product.kcal, 0)} kcal · ${number(product.protein_g)} g protéines / 100 ${product.nutrition_basis_unit || "g"}</small>
       </div>
       <div class="library-item-actions">
         <button class="primary compact" type="button" data-use-food="${escapeHTML(product.id)}">Ajouter au journal</button>
@@ -1223,6 +1248,10 @@ async function saveScannedToLibrary() {
       brand: brand || null,
       barcode: product.barcode || null,
       serving_basis_g: 100,
+      serving_basis_value: Number($("scanQuantity").value || 100),
+      serving_basis_unit: $("scanQuantityUnit").value,
+      nutrition_basis_unit: $("scanNutritionBasis").value,
+      piece_weight_g: $("scanQuantityUnit").value === "piece" ? Number($("scanPieceWeight").value || 0) : null,
       kcal: Number($("scanCalories").value),
       protein_g: Number($("scanProtein").value),
       carbs_g: Number($("scanCarbs").value),
@@ -1248,35 +1277,37 @@ async function saveScannedToLibrary() {
 async function addLibraryProductToJournal(id) {
   const product = libraryProducts.find(item => item.id === id);
   if (!product) return;
-
-  const basis = Number(product.serving_basis_g || 100);
-  const raw = prompt(`Quantité consommée en grammes pour « ${product.name} » ?`, String(basis));
+  const unit = product.serving_basis_unit || "g";
+  const basis = product.nutrition_basis_unit || "g";
+  const suggested = product.serving_basis_value || product.serving_basis_g || (unit === "ml" ? 250 : 100);
+  const raw = prompt(`Quantité consommée de « ${product.name} » en ${unit === "piece" ? "pièce(s)" : unit} :`, String(suggested));
   if (raw === null) return;
   const quantity = Number(raw.replace(",", "."));
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    alert("Indique une quantité supérieure à 0 g.");
-    return;
+  if (!Number.isFinite(quantity) || quantity <= 0) { alert("Indique une quantité supérieure à 0."); return; }
+  let pieceWeight = Number(product.piece_weight_g || 0);
+  if (unit === "piece" && pieceWeight <= 0) {
+    const weightRaw = prompt("Poids d’une pièce en grammes (nécessaire au calcul) :", "");
+    if (weightRaw === null) return;
+    pieceWeight = Number(weightRaw.replace(",", "."));
+    if (!Number.isFinite(pieceWeight) || pieceWeight <= 0) { alert("Poids par pièce invalide."); return; }
   }
-
-  const factor = quantity / 100;
+  const nutritionQuantity = unit === "piece" ? quantity * pieceWeight : quantity;
+  const factor = nutritionQuantity / 100;
   const row = {
-    user_id: currentUser.id,
-    product_id: product.id,
+    user_id: currentUser.id, product_id: product.id,
     product_name_snapshot: product.name,
-    quantity_g: quantity,
+    quantity_g: unit === "ml" ? null : nutritionQuantity,
+    quantity_value: quantity, quantity_unit: unit,
+    nutrition_basis_unit: basis,
     kcal: Number(product.kcal || 0) * factor,
     protein_g: Number(product.protein_g || 0) * factor,
     carbs_g: Number(product.carbs_g || 0) * factor,
     fat_g: Number(product.fat_g || 0) * factor
   };
-
   const { error } = await client.from("nutrition_logs").insert(row);
-  if (error) {
-    alert(`Impossible d'ajouter cet aliment : ${error.message}`);
-    return;
-  }
+  if (error) { alert(`Impossible d'ajouter cet aliment : ${error.message}`); return; }
   await loadNutrition();
-  showMessage("libraryMessage", `${product.name} ajouté au journal (${number(quantity, 0)} g).`);
+  showMessage("libraryMessage", `${product.name} ajouté au journal (${number(quantity, 1)} ${unit === "piece" ? "pièce(s)" : unit}).`);
 }
 
 async function deleteLibraryProduct(id) {
@@ -1315,6 +1346,9 @@ async function addScannedProduct() {
 
   const quantityInput = $("scanQuantity");
   const quantity = Number(quantityInput.value);
+  const unit = $("scanQuantityUnit").value;
+  const basis = $("scanNutritionBasis").value;
+  const pieceWeight = Number($("scanPieceWeight").value || 0);
 
   if (
     quantityInput.value.trim() === "" ||
@@ -1352,12 +1386,18 @@ async function addScannedProduct() {
     return;
   }
 
-  const factor = quantity / 100;
+  if (unit === "piece" && pieceWeight <= 0) { showMessage("scanSaveMessage", "Indique le poids d’une pièce.", true); return; }
+  if ((unit === "ml") !== (basis === "ml")) { showMessage("scanSaveMessage", "L’unité de consommation doit correspondre à la base nutritionnelle (g ou ml).", true); return; }
+  const nutritionQuantity = unit === "piece" ? quantity * pieceWeight : quantity;
+  const factor = nutritionQuantity / 100;
 
   const row = {
     user_id: currentUser.id,
     product_name_snapshot: scannedProductData.name,
-    quantity_g: quantity,
+    quantity_g: unit === "ml" ? null : nutritionQuantity,
+    quantity_value: quantity,
+    quantity_unit: unit,
+    nutrition_basis_unit: basis,
     kcal: Number($("scanCalories").value) * factor,
     protein_g: Number($("scanProtein").value) * factor,
     carbs_g: Number($("scanCarbs").value) * factor,
@@ -1396,7 +1436,7 @@ async function addScannedProduct() {
 
     showMessage(
       "scanSaveMessage",
-      `${productName} (${quantity} g) ajouté au journal.`
+      `${productName} (${quantity} ${unit === "piece" ? "pièce(s)" : unit}) ajouté au journal.`
     );
 
     setTimeout(() => {

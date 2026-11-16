@@ -108,20 +108,14 @@
         <h3 id="scannedProductName">Produit détecté</h3>
         <p id="scannedProductDetails" class="muted"></p>
         <div class="form-grid">
-          <div><label for="scanCalories">Calories / 100 g</label><input id="scanCalories" type="number" min="0" step="0.1"></div>
+          <div><label for="scanNutritionBasis">Valeurs nutritionnelles pour</label><select id="scanNutritionBasis"><option value="g">100 g</option><option value="ml">100 ml</option></select></div>
+          <div><label for="scanCalories">Calories / 100</label><input id="scanCalories" type="number" min="0" step="0.1"></div>
           <div><label for="scanProtein">Protéines / 100 g</label><input id="scanProtein" type="number" min="0" step="0.1"></div>
           <div><label for="scanCarbs">Glucides / 100 g</label><input id="scanCarbs" type="number" min="0" step="0.1"></div>
           <div><label for="scanFat">Lipides / 100 g</label><input id="scanFat" type="number" min="0" step="0.1"></div>
         </div>
-        <label for="scanQuantity">Quantité réellement consommée (g) *</label>
-<input
-  id="scanQuantity"
-  type="number"
-  min="1"
-  step="1"
-  placeholder="Ex. 150"
-  required
->
+        <div class="form-grid"><div><label for="scanQuantityUnit">Unité consommée</label><select id="scanQuantityUnit"><option value="g">Grammes (g)</option><option value="ml">Millilitres (ml)</option><option value="piece">Pièces</option></select></div><div><label for="scanPieceWeight">Poids par pièce (g), si pièces</label><input id="scanPieceWeight" type="number" min="0.1" step="0.1" placeholder="Ex. 60"></div></div>
+<label for="scanQuantity">Quantité réellement consommée *</label><input id="scanQuantity" type="number" min="0.1" step="0.1" placeholder="Ex. 150" required>
 <div id="scanPreview" class="scan-preview">
   Saisis la quantité consommée pour calculer les macros.
 </div>
@@ -157,15 +151,9 @@
     placeholder="Ex. Skyr, sandwich poulet…"
   >
 
-  <label for="foodQuantity">Quantité consommée (g)</label>
-  <input
-    id="foodQuantity"
-    type="number"
-    min="1"
-    step="1"
-    placeholder="Ex. 250"
-    required
-  >
+  <div class="form-grid"><div><label for="foodQuantityUnit">Unité</label><select id="foodQuantityUnit"><option value="g">Grammes (g)</option><option value="ml">Millilitres (ml)</option><option value="piece">Pièces</option></select></div><div><label for="foodNutritionBasis">Valeurs nutritionnelles pour</label><select id="foodNutritionBasis"><option value="g">100 g</option><option value="ml">100 ml</option></select></div></div>
+  <label for="foodQuantity">Quantité consommée</label><input id="foodQuantity" type="number" min="0.1" step="0.1" placeholder="Ex. 250" required>
+  <label for="foodPieceWeight">Poids par pièce (g), si pièces</label><input id="foodPieceWeight" type="number" min="0.1" step="0.1" placeholder="Ex. 60">
 
   <div class="form-grid">
           <div><label for="foodKcal">Calories (kcal)</label><input id="foodKcal" type="number" min="0" step="1" required></div>
