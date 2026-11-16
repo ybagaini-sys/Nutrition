@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "forme-v2-shell-9";
+const CACHE_NAME = "forme-v2-shell-10";
 
 const APP_SHELL = [
   "./",

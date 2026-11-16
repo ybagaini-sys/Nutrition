@@ -693,3 +693,20 @@ code {
     padding: 8px 5px;
   }
 }
+
+
+/* Navigation et bibliothèque alimentaire personnelle */
+.top-actions { display:flex; align-items:center; gap:10px; }
+.menu-toggle { border:1px solid var(--border); border-radius:12px; padding:8px 12px; }
+.main-menu { display:flex; flex-wrap:wrap; gap:10px; margin:-18px 0 24px; padding:12px; background:var(--panel); border:1px solid var(--border); border-radius:14px; }
+.main-menu a { color:var(--text); text-decoration:none; padding:7px 10px; border-radius:9px; background:var(--panel-light); }
+.library-panel input[type="search"] { width:100%; margin:4px 0 14px; }
+.food-library { display:grid; gap:10px; }
+.library-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px; border:1px solid var(--border); border-radius:13px; background:rgba(32,47,69,.55); }
+.library-item-info { min-width:0; display:grid; gap:4px; }
+.library-item-info strong { overflow-wrap:anywhere; }
+.library-item-info small { color:var(--muted); }
+.library-item-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:7px; }
+.library-item-actions button { font-size:12px; }
+.danger-text { color:var(--danger); }
+@media (max-width:600px) { .library-item { align-items:flex-start; flex-direction:column; } .library-item-actions { width:100%; justify-content:flex-start; } .top { align-items:flex-start; } .top-actions { flex-direction:column; align-items:flex-end; } }

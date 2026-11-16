@@ -14,8 +14,16 @@
 <main class="shell">
   <header class="top">
     <div class="brand"><span class="mark">F</span><div><strong>FORME</strong><small>Nutrition & Performance</small></div></div>
-    <span id="connectionBadge" class="badge">Connexion…</span>
+    <div class="top-actions">
+      <span id="connectionBadge" class="badge">Connexion…</span>
+      <button id="menuToggle" class="quiet menu-toggle" type="button" aria-expanded="false" aria-controls="mainMenu">Menu</button>
+    </div>
   </header>
+  <nav id="mainMenu" class="main-menu hidden" aria-label="Navigation principale">
+    <a href="#nutritionSection">Nutrition</a>
+    <a href="#foodLibrarySection">Ma bibliothèque</a>
+    <a href="#foodHistorySection">Historique</a>
+  </nav>
 
   <section id="setupNotice" class="panel notice hidden">
     <h2>Configuration nécessaire</h2>
@@ -81,7 +89,7 @@
       <p class="footnote">Chaque point représente une pesée Withings réelle. Les valeurs absentes restent absentes.</p>
     </article>
 
-    <div class="section-title"><div><p class="eyebrow">SUIVI QUOTIDIEN</p><h2>Nutrition</h2></div><span class="badge" id="nutritionStatus">Données manuelles et scan</span></div>
+    <div id="nutritionSection" class="section-title"><div><p class="eyebrow">SUIVI QUOTIDIEN</p><h2>Nutrition</h2></div><span class="badge" id="nutritionStatus">Données manuelles et scan</span></div>
 
     <article class="panel">
       <p class="eyebrow">AJOUTER UN ALIMENT</p>
@@ -118,6 +126,7 @@
   Saisis la quantité consommée pour calculer les macros.
 </div>
 <p id="scanSaveMessage" class="message" role="status"></p>
+<button id="saveScannedToLibrary" class="quiet" type="button">＋ Ajouter à ma bibliothèque</button>
 <button id="addScannedProduct" class="primary" type="button">
   Ajouter au journal
 </button>
@@ -125,6 +134,15 @@
   Annuler
 </button>
       </div>
+    </article>
+
+    <div id="foodLibrarySection" class="section-title"><div><p class="eyebrow">MES PRODUITS RÉCURRENTS</p><h2>Ma bibliothèque alimentaire</h2></div><span class="badge" id="libraryCount">0 produit</span></div>
+    <article class="panel library-panel">
+      <p class="muted">Conserve ici uniquement les produits que tu utilises régulièrement. Un scan ne les ajoute jamais automatiquement.</p>
+      <label for="librarySearch">Rechercher dans ma bibliothèque</label>
+      <input id="librarySearch" type="search" placeholder="Nom, marque ou code-barres…" autocomplete="off">
+      <div id="foodLibrary" class="food-library"><p class="muted">Chargement de ta bibliothèque…</p></div>
+      <p id="libraryMessage" class="message" role="status"></p>
     </article>
 
     <article class="panel">
@@ -160,7 +178,7 @@
       <p id="foodMessage" class="message" role="status"></p>
     </article>
 
-    <div class="section-title"><div><p class="eyebrow">AUJOURD'HUI</p><h2>Historique alimentaire</h2></div><span class="badge" id="foodCount">0 entrée</span></div>
+    <div id="foodHistorySection" class="section-title"><div><p class="eyebrow">AUJOURD'HUI</p><h2>Historique alimentaire</h2></div><span class="badge" id="foodCount">0 entrée</span></div>
     <article class="panel"><div id="foodHistory"><p class="muted">Aucune consommation enregistrée aujourd'hui.</p></div></article>
 
     <div class="section-title"><div><p class="eyebrow">DONNÉES CORPORELLES</p><h2>Ajouter une pesée manuelle</h2></div></div>
