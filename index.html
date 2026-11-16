@@ -181,14 +181,26 @@
 
     <div class="section-title"><div><p class="eyebrow">SOURCES CONNECTÉES</p><h2>Sport & récupération</h2></div></div>
     <div class="grid">
-      <article class="tile source"><span class="tile-icon">⌚</span><h3>Garmin</h3><p>Activités, sommeil et récupération.</p><span class="status">À connecter</span></article>
+      <article class="tile source">
+        <span class="tile-icon">⌚</span><h3>Garmin</h3>
+        <p>Activités, sommeil et récupération.</p>
+        <span class="status" id="garminStatus">Statut à vérifier</span>
+        <button id="garminSync" class="primary compact" type="button">Synchroniser Garmin</button>
+        <p id="garminMessage" class="message" role="status"></p>
+      </article>
       <article class="tile source">
         <span class="tile-icon">⚖️</span><h3>Withings</h3><p>Poids et composition corporelle.</p><span class="status">Compte autorisé</span>
         <button id="withingsConnect" class="quiet" type="button">Reconnecter Withings</button>
         <button id="withingsSync" class="primary compact" type="button">Synchroniser maintenant</button>
         <p id="withingsMessage" class="message" role="status"></p>
       </article>
-      <article class="tile source"><span class="tile-icon">🏋️</span><h3>Hevy Pro</h3><p>Séries, répétitions et progression.</p><span class="status">À connecter</span></article>
+      <article class="tile source">
+        <span class="tile-icon">🏋️</span><h3>Hevy Pro</h3>
+        <p>Séries, répétitions et progression.</p>
+        <span class="status" id="hevyStatus">Statut à vérifier</span>
+        <button id="hevySync" class="primary compact" type="button">Synchroniser Hevy</button>
+        <p id="hevyMessage" class="message" role="status"></p>
+      </article>
       <article class="tile source"><span class="tile-icon">🌙</span><h3>Récupération</h3><p>Sommeil, fréquence cardiaque et stress.</p><span class="status">En attente Garmin</span></article>
     </div>
 
@@ -200,7 +212,7 @@
         <div><small>Poids cible</small><strong id="targetValue">72 kg</strong></div>
         <div><small>Calories de départ</small><strong id="targetCaloriesValue">—</strong></div>
       </div>
-      <p class="footnote">Les intégrations Garmin et Hevy ne sont pas encore actives. Les données Withings sont synchronisées dans ton espace Supabase personnel.</p>
+      <p class="footnote">Les données Garmin, Hevy et Withings sont synchronisées dans ton espace Supabase personnel.</p>
       <p id="syncStatus" class="muted tiny"></p>
     </article>
   </section>
