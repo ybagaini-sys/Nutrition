@@ -140,6 +140,9 @@ async function init() {
   $("withingsConnect")?.addEventListener("click", connectWithings);
   $("withingsSync")?.addEventListener("click", syncWithings);
 
+  $("garminSync")?.addEventListener("click", syncGarmin);
+  $("hevySync")?.addEventListener("click", syncHevy);
+
   $("startScanner")?.addEventListener("click", startScanner);
   $("stopScanner")?.addEventListener("click", stopScanner);
   $("addScannedProduct")?.addEventListener("click", addScannedProduct);
@@ -271,7 +274,9 @@ async function loadDashboard() {
     loadNutrition(),
     loadFoodLibrary(),
     loadWorkouts(),
-    loadWithings()
+    loadWithings(),
+    loadProviderConnectionStatus("garmin"),
+    loadProviderConnectionStatus("hevy")
   ]);
 
   setText("syncStatus", `Dernière actualisation : ${formatDate(new Date(), {
@@ -439,10 +444,6 @@ function renderNutrition() {
     });
   });
 }
-
-/* =====================================================
-   NUTRITION : SAISIE MANUELLE
-===================================================== */
 
 /* =====================================================
    UNITÉS : LIBELLÉS ET BASE NUTRITIONNELLE
@@ -1508,6 +1509,140 @@ function cancelScannedProduct() {
   $("scannerPanel")?.classList.add("hidden");
 
   showMessage("scanSaveMessage", "");
+}
+
+/* =====================================================
+   SYNCHRONISATION GARMIN ET HEVY
+===================================================== */
+
+async function runProviderSync(provider) {
+  const config = {
+    garmin: {
+      buttonId: "garminSync",
+      messageId: "garminMessage",
+      functionName: "garmin-sync",
+      label: "Garmin"
+    },
+    hevy: {
+      buttonId: "hevySync",
+      messageId: "hevyMessage",
+      functionName: "hevy-sync",
+      label: "Hevy"
+    }
+  }[provider];
+
+  if (!config || !client || !currentUser) {
+    throw new Error("Session utilisateur indisponible.");
+  }
+
+  const button = $(config.buttonId);
+  if (button) button.disabled = true;
+  showMessage(config.messageId, `Synchronisation ${config.label} en cours…`);
+
+  try {
+    const { data: sessionData, error: sessionError } =
+      await client.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error("Session expirée. Reconnecte-toi.");
+
+    const { data, error } = await client.functions.invoke(
+      config.functionName,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    if (error) {
+      let detail = error.message || "Erreur de synchronisation.";
+      if (error.context && typeof error.context.json === "function") {
+        try {
+          const body = await error.context.json();
+          if (body?.error) detail = body.error;
+        } catch (_) {
+          // Conserver le message Supabase si la réponse n'est pas JSON.
+        }
+      }
+      throw new Error(detail);
+    }
+
+    if (data?.error) throw new Error(data.error);
+
+    const count = Number(
+      data?.inserted ?? data?.imported ?? data?.records_inserted ?? 0
+    );
+    const received = Number(
+      data?.received ?? data?.records_received ?? 0
+    );
+
+    showMessage(
+      config.messageId,
+      data?.message ||
+        `${config.label} : synchronisation terminée. ${count} nouvelle(s) entrée(s), ${received} reçue(s).`
+    );
+
+    if (provider === "hevy") {
+      await loadWorkouts();
+    }
+
+    await loadProviderConnectionStatus(provider);
+    return data;
+  } catch (error) {
+    console.error(`Synchronisation ${config.label} :`, error);
+    showMessage(
+      config.messageId,
+      error.message || `Échec de la synchronisation ${config.label}.`,
+      true
+    );
+    throw error;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function loadProviderConnectionStatus(provider) {
+  if (!client || !currentUser) return;
+
+  const statusId = provider === "garmin" ? "garminStatus" : "hevyStatus";
+  const { data, error } = await client
+    .from("provider_connections")
+    .select("connection_status,last_sync_at,last_sync_status")
+    .eq("user_id", currentUser.id)
+    .eq("provider", provider)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(`Statut ${provider} indisponible :`, error.message);
+    return;
+  }
+
+  const status = data?.connection_status === "connected"
+    ? "Connecté"
+    : data?.connection_status === "error"
+      ? "Erreur de synchronisation"
+      : "Configuration en attente";
+
+  setText(statusId, status);
+}
+
+async function syncGarmin() {
+  try {
+    await runProviderSync("garmin");
+  } catch (_) {
+    // Le message détaillé est affiché dans la carte Garmin.
+  }
+}
+
+async function syncHevy() {
+  try {
+    await runProviderSync("hevy");
+  } catch (_) {
+    // Le message détaillé est affiché dans la carte Hevy.
+  }
 }
 
 /* =====================================================
