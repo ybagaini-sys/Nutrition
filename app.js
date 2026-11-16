@@ -129,11 +129,13 @@ async function init() {
   $("refreshButton")?.addEventListener("click", loadDashboard);
   $("weightForm")?.addEventListener("submit", saveManualWeight);
   $("foodForm")?.addEventListener("submit", saveFood);
-  $("foodNutritionBasis")?.addEventListener("change", () => {
-    const unit = $("foodNutritionBasis").value;
-    setText("foodBasisLabel", unit);
-    setText("foodBasisProteinLabel", unit);
+  $("foodQuantityUnit")?.addEventListener("change", updateFoodUnitLabels);
+  $("scanQuantityUnit")?.addEventListener("change", () => {
+    updateScanUnitLabels();
+    updateScanPreview();
   });
+  updateFoodUnitLabels();
+  updateScanUnitLabels();
 
   $("withingsConnect")?.addEventListener("click", connectWithings);
   $("withingsSync")?.addEventListener("click", syncWithings);
@@ -441,6 +443,44 @@ function renderNutrition() {
 /* =====================================================
    NUTRITION : SAISIE MANUELLE
 ===================================================== */
+
+/* =====================================================
+   UNITÉS : LIBELLÉS ET BASE NUTRITIONNELLE
+===================================================== */
+
+function nutritionBasisForQuantityUnit(unit) {
+  return unit === "ml" ? "ml" : "g";
+}
+
+function updateUnitLabels(prefix, unit) {
+  const basis = nutritionBasisForQuantityUnit(unit);
+  const basisLabel = basis === "ml" ? "100 ml" : "100 g";
+  const basisSelect = $(prefix + "NutritionBasis");
+  if (basisSelect) {
+    basisSelect.value = basis;
+    basisSelect.disabled = true;
+  }
+  const labels = prefix === "food"
+    ? [["foodKcalLabel", `Calories pour ${basisLabel} (kcal)`], ["foodProteinLabel", `Protéines pour ${basisLabel}`], ["foodCarbsLabel", `Glucides pour ${basisLabel}`], ["foodFatLabel", `Lipides pour ${basisLabel}`]]
+    : [["scanKcalLabel", `Calories pour ${basisLabel}`], ["scanProteinLabel", `Protéines pour ${basisLabel}`], ["scanCarbsLabel", `Glucides pour ${basisLabel}`], ["scanFatLabel", `Lipides pour ${basisLabel}`]];
+  labels.forEach(([id, text]) => setText(id, text));
+}
+
+function updateFoodUnitLabels() {
+  const unit = $("foodQuantityUnit")?.value || "g";
+  updateUnitLabels("food", unit);
+  const pieceField = $("foodPieceWeight");
+  $("foodPieceWeightLabel")?.classList.toggle("hidden", unit !== "piece");
+  pieceField?.classList.toggle("hidden", unit !== "piece");
+}
+
+function updateScanUnitLabels() {
+  const unit = $("scanQuantityUnit")?.value || "g";
+  updateUnitLabels("scan", unit);
+  const pieceField = $("scanPieceWeight");
+  $("scanPieceWeightLabel")?.classList.toggle("hidden", unit !== "piece");
+  pieceField?.classList.toggle("hidden", unit !== "piece");
+}
 
 async function saveFood(event) {
   event.preventDefault();
