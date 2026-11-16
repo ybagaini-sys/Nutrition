@@ -211,18 +211,16 @@ async function login(event) {
   }
 
   currentUser = data.user;
+  showMessage("authMessage", "Connexion réussie.");
+
   await loadDashboard();
 }
 
 async function logout() {
+  if (!client) return;
+
   await stopScanner();
-
-  const { error } = await client.auth.signOut();
-
-  if (error) {
-    showMessage("authMessage", error.message, true);
-    return;
-  }
+  await client.auth.signOut();
 
   currentUser = null;
   showDashboard(false);
@@ -436,47 +434,64 @@ async function saveFood(event) {
   const quantity = Number($("foodQuantity").value);
 
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    showMessage("foodMessage", "Indique une quantité valide.", true);
+    showMessage(
+      "foodMessage",
+      "Indique une quantité valide.",
+      true
+    );
+
     button.disabled = false;
     return;
   }
 
-  const payload = {
+  const row = {
     user_id: currentUser.id,
     product_name_snapshot: $("foodName").value.trim(),
     quantity_g: quantity,
-    kcal: Number($("foodCalories").value) || 0,
-    protein_g: Number($("foodProtein").value) || 0,
-    carbs_g: Number($("foodCarbs").value) || 0,
-    fat_g: Number($("foodFat").value) || 0,
-    consumed_at: new Date().toISOString()
+    kcal: Number($("foodKcal").value),
+    protein_g: Number($("foodProtein").value),
+    carbs_g: Number($("foodCarbs").value || 0),
+    fat_g: Number($("foodFat").value || 0)
   };
 
-  if (!payload.product_name_snapshot) {
-    showMessage("foodMessage", "Indique le nom de l'aliment.", true);
+  try {
+    const { error } = await client
+      .from("nutrition_logs")
+      .insert(row);
+
+    if (error) throw error;
+
+    $("foodForm").reset();
+
+    const refreshed = await loadNutrition();
+
+    showMessage(
+      "foodMessage",
+      refreshed
+        ? "Consommation enregistrée."
+        : "Consommation enregistrée, mais actualisation impossible."
+    );
+
+  } catch (error) {
+    console.error("Erreur saisie manuelle :", error);
+
+    showMessage(
+      "foodMessage",
+      `Erreur : ${error.message}`,
+      true
+    );
+
+  } finally {
     button.disabled = false;
-    return;
   }
-
-  const { error } = await client
-    .from("nutrition_logs")
-    .insert(payload);
-
-  if (error) {
-    showMessage("foodMessage", error.message, true);
-    button.disabled = false;
-    return;
-  }
-
-  $("foodForm").reset();
-  showMessage("foodMessage", "Aliment ajouté au journal.");
-  await loadNutrition();
-
-  button.disabled = false;
 }
 
+/* =====================================================
+   NUTRITION : SUPPRESSION
+===================================================== */
+
 async function deleteFood(id) {
-  if (!confirm("Supprimer cette consommation ?")) return;
+  if (!confirm("Supprimer cette entrée alimentaire ?")) return;
 
   const { error } = await client
     .from("nutrition_logs")
@@ -485,7 +500,7 @@ async function deleteFood(id) {
     .eq("user_id", currentUser.id);
 
   if (error) {
-    showMessage("foodMessage", error.message, true);
+    alert(`Impossible de supprimer : ${error.message}`);
     return;
   }
 
@@ -497,19 +512,19 @@ async function deleteFood(id) {
 ===================================================== */
 
 async function loadWorkouts() {
-  const { data, error } = await client
+  const { count, error } = await client
     .from("strength_workouts")
-    .select("id,started_at,duration_seconds")
+    .select("*", { count: "exact", head: true })
     .eq("user_id", currentUser.id)
-    .gte("started_at", getStartOfWeek())
-    .order("started_at", { ascending: false });
+    .gte("started_at", getStartOfWeek());
 
   if (error) {
-    console.error("Erreur entraînements", error);
+    console.error("Erreur séances", error);
+    setText("workoutsValue", "—");
     return;
   }
 
-  setText("workoutsValue", String((data || []).length));
+  setText("workoutsValue", String(count || 0));
 }
 
 /* =====================================================
@@ -517,6 +532,8 @@ async function loadWorkouts() {
 ===================================================== */
 
 async function loadWithings() {
+  setText("compositionDate", "Chargement…");
+
   const { data, error } = await client
     .from("body_measurements")
     .select("id,measured_at,source,weight_kg,body_fat_pct,fat_mass_kg,muscle_mass_kg,lean_mass_kg,water_pct,bone_mass_kg,visceral_fat_index")
@@ -527,36 +544,47 @@ async function loadWithings() {
 
   if (error) {
     console.error("Erreur Withings", error);
-    showMessage("withingsMessage", error.message, true);
+
+    setText("compositionDate", "Erreur");
+    setText("weightDate", "Impossible de charger les données Withings");
+
     return;
   }
 
   withingsRows = data || [];
+
   renderLatestWithings();
   renderCharts();
 }
 
+/* =====================================================
+   WITHINGS : DERNIÈRE MESURE
+===================================================== */
+
 function renderLatestWithings() {
-  const latest = withingsRows[0];
+  const latest = withingsRows.find(row =>
+    row.weight_kg !== null && row.weight_kg !== undefined
+  );
 
   if (!latest) {
-    setText("compositionDate", "Aucune mesure Withings");
-    [
-      "compWeight",
-      "compFatPct",
-      "compFatKg",
-      "compMuscle",
-      "compLean",
-      "compBone",
-      "compVisceral",
-      "compWater"
-    ].forEach(id => setText(id, "—"));
+    setText("weightValue", "—");
+    setText("weightDate", "Aucune pesée Withings synchronisée");
+    setText("compWeight", "—");
+    setText("compositionDate", "Aucune donnée");
+
+    setText(
+      "weightProgress",
+      "Synchronise Withings pour afficher tes mesures."
+    );
+
     return;
   }
 
-  setText("compositionDate", formatDate(latest.measured_at, {
-    day: "2-digit",
-    month: "long",
+  setText("weightValue", kg(latest.weight_kg));
+
+  setText("weightDate", formatDate(latest.measured_at, {
+    day: "numeric",
+    month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit"
@@ -564,176 +592,52 @@ function renderLatestWithings() {
 
   setText("compWeight", kg(latest.weight_kg));
   setText("compFatPct", pct(latest.body_fat_pct));
-  setText("compFatKg", kg(latest.fat_mass_kg));
+
+  setText(
+    "compFatKg",
+    latest.fat_mass_kg == null
+      ? "—"
+      : kg(latest.fat_mass_kg)
+  );
+
   setText("compMuscle", kg(latest.muscle_mass_kg));
   setText("compLean", kg(latest.lean_mass_kg));
   setText("compBone", kg(latest.bone_mass_kg));
-  setText("compVisceral", latest.visceral_fat_index ?? "—");
+
+  setText(
+    "compVisceral",
+    latest.visceral_fat_index == null
+      ? "—"
+      : number(latest.visceral_fat_index, 0)
+  );
+
   setText("compWater", pct(latest.water_pct));
-  setText("weightValue", kg(latest.weight_kg));
-  setText("weightDate", formatDate(latest.measured_at, {
-    day: "2-digit",
+
+  setText("compositionDate", formatDate(latest.measured_at, {
+    day: "numeric",
     month: "short",
     year: "numeric"
   }));
+
+  setText(
+    "weightProgress",
+    `Écart avec ton objectif : ${number(
+      Number(latest.weight_kg) - TARGET_WEIGHT
+    )} kg`
+  );
 }
 
 /* =====================================================
-   GRAPHIQUES
-===================================================== */
-
-function renderCharts() {
-  const rows = [...withingsRows]
-    .filter(row => row.measured_at)
-    .sort((a, b) => new Date(a.measured_at) - new Date(b.measured_at));
-
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - currentPeriod);
-
-  const filtered = rows.filter(row =>
-    new Date(row.measured_at) >= cutoff
-  );
-
-  renderSingleChart(
-    "weightChart",
-    filtered,
-    "weight_kg",
-    "Poids",
-    "kg"
-  );
-
-  renderSingleChart(
-    "fatChart",
-    filtered,
-    "body_fat_pct",
-    "Masse grasse",
-    "%"
-  );
-
-  renderSingleChart(
-    "muscleChart",
-    filtered,
-    "muscle_mass_kg",
-    "Masse musculaire",
-    "kg"
-  );
-
-  const first = filtered[0];
-  const last = filtered[filtered.length - 1];
-
-  if (first && last && first !== last) {
-    setText("weightChange", `${number(Number(last.weight_kg) - Number(first.weight_kg))} kg`);
-    setText("fatChange", `${number(Number(last.body_fat_pct) - Number(first.body_fat_pct))} %`);
-    setText("muscleChange", `${number(Number(last.muscle_mass_kg) - Number(first.muscle_mass_kg))} kg`);
-  } else {
-    setText("weightChange", "—");
-    setText("fatChange", "—");
-    setText("muscleChange", "—");
-  }
-}
-
-function renderSingleChart(containerId, rows, key, title, unit) {
-  const container = $(containerId);
-  if (!container) return;
-
-  const points = rows
-    .filter(row => row[key] !== null && row[key] !== undefined)
-    .map(row => ({
-      date: new Date(row.measured_at),
-      value: Number(row[key])
-    }))
-    .filter(point => Number.isFinite(point.value));
-
-  if (!points.length) {
-    container.innerHTML = '<p class="muted">Pas encore de données.</p>';
-    return;
-  }
-
-  const width = 600;
-  const height = 220;
-  const left = 48;
-  const right = 20;
-  const top = 18;
-  const bottom = 34;
-  const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
-
-  const values = points.map(point => point.value);
-  let min = Math.min(...values);
-  let max = Math.max(...values);
-
-  if (min === max) {
-    min -= 1;
-    max += 1;
-  }
-
-  const padding = (max - min) * 0.12;
-  min -= padding;
-  max += padding;
-
-  const x = index =>
-    left + (points.length === 1
-      ? plotWidth / 2
-      : (index / (points.length - 1)) * plotWidth);
-
-  const y = value =>
-    top + ((max - value) / (max - min)) * plotHeight;
-
-  const path = points.map((point, index) =>
-    `${index === 0 ? "M" : "L"} ${x(index)} ${y(point.value)}`
-  ).join(" ");
-
-  const circles = points.map((point, index) => `
-    <circle cx="${x(index)}" cy="${y(point.value)}" r="4">
-      <title>${formatDate(point.date, { day: "2-digit", month: "short" })} : ${number(point.value)} ${unit}</title>
-    </circle>
-  `).join("");
-
-  container.innerHTML = `
-    <div class="chart-heading">
-      <strong>${escapeHTML(title)}</strong>
-      <span>${number(points[points.length - 1].value)} ${unit}</span>
-    </div>
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(title)}">
-      <line class="chart-gridline"
-        x1="${left}" y1="${top + plotHeight / 2}"
-        x2="${width - right}" y2="${top + plotHeight / 2}"></line>
-      <line class="chart-axis"
-        x1="${left}" y1="${top}"
-        x2="${left}" y2="${height - bottom}"></line>
-      <path class="chart-line" d="${path}"></path>
-      ${circles}
-      <text class="chart-label" x="${left}" y="${height - 8}">
-        ${formatDate(points[0].date, { day: "2-digit", month: "short" })}
-      </text>
-      <text class="chart-label" x="${width - right}" y="${height - 8}" text-anchor="end">
-        ${formatDate(points[points.length - 1].date, { day: "2-digit", month: "short" })}
-      </text>
-    </svg>
-  `;
-}
-
-/* =====================================================
-   SAISIE MANUELLE DU POIDS
+   PESÉE MANUELLE
 ===================================================== */
 
 async function saveManualWeight(event) {
   event.preventDefault();
 
-  const button = $("weightForm").querySelector(
-    'button[type="submit"]'
-  );
+  const value = Number($("weightInput").value);
 
-  button.disabled = true;
-
-  showMessage("weightMessage", "Enregistrement…");
-
-  const weight = Number($("manualWeight").value);
-  const date = $("manualWeightDate").value || new Date().toISOString().slice(0, 10);
-
-  if (!Number.isFinite(weight) || weight <= 0) {
-    showMessage("weightMessage", "Indique un poids valide.", true);
-    button.disabled = false;
+  if (!Number.isFinite(value) || value < 30 || value > 300) {
+    showMessage("weightMessage", "Entre un poids valide.", true);
     return;
   }
 
@@ -741,43 +645,241 @@ async function saveManualWeight(event) {
     .from("body_measurements")
     .insert({
       user_id: currentUser.id,
-      measured_at: new Date(`${date}T12:00:00`).toISOString(),
+      measured_at: new Date().toISOString(),
       source: "manual",
       external_id: `manual-${Date.now()}`,
-      weight_kg: weight
+      weight_kg: value
     });
 
   if (error) {
-    showMessage("weightMessage", error.message, true);
-    button.disabled = false;
+    showMessage(
+      "weightMessage",
+      `Erreur : ${error.message}`,
+      true
+    );
+
     return;
   }
 
   $("weightForm").reset();
-  showMessage("weightMessage", "Poids enregistré.");
-  button.disabled = false;
 
-  await loadWithings();
+  showMessage(
+    "weightMessage",
+    "Pesée manuelle enregistrée. Elle reste séparée de Withings."
+  );
 }
 
 /* =====================================================
-   SCANNER : DÉMARRAGE ET ARRÊT
+   GRAPHIQUES WITHINGS
+===================================================== */
+
+function renderCharts() {
+  const cutoff = Date.now() - currentPeriod * 86400000;
+
+  const rows = withingsRows
+    .filter(row =>
+      new Date(row.measured_at).getTime() >= cutoff
+    )
+    .sort((a, b) =>
+      new Date(a.measured_at) - new Date(b.measured_at)
+    );
+
+  renderSingleChart(
+    "weightChart",
+    rows,
+    "weight_kg",
+    "kg",
+    "weightChange"
+  );
+
+  renderSingleChart(
+    "fatChart",
+    rows,
+    "body_fat_pct",
+    "%",
+    "fatChange"
+  );
+
+  renderSingleChart(
+    "muscleChart",
+    rows,
+    "muscle_mass_kg",
+    "kg",
+    "muscleChange"
+  );
+}
+
+function renderSingleChart(
+  containerId,
+  rows,
+  key,
+  unit,
+  changeId
+) {
+  const host = $(containerId);
+  if (!host) return;
+
+  const points = rows.filter(row =>
+    row[key] !== null &&
+    row[key] !== undefined &&
+    Number.isFinite(Number(row[key]))
+  );
+
+  if (!points.length) {
+    host.innerHTML =
+      '<p class="muted">Pas encore assez de mesures Withings sur cette période.</p>';
+
+    setText(changeId, "—");
+    return;
+  }
+
+  const values = points.map(row => Number(row[key]));
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  const range = Math.max(
+    max - min,
+    unit === "%" ? 0.5 : 0.3
+  );
+
+  const pad = range * 0.18;
+
+  const low = min - pad;
+  const high = max + pad;
+
+  const width = 600;
+  const height = 150;
+
+  const left = 44;
+  const right = 12;
+  const top = 12;
+  const bottom = 26;
+
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+
+  const coords = points.map((row, index) => {
+    const x = points.length === 1
+      ? left + plotWidth / 2
+      : left + index / (points.length - 1) * plotWidth;
+
+    const y =
+      top + (high - Number(row[key])) / (high - low) * plotHeight;
+
+    return {
+      x,
+      y,
+      row,
+      value: Number(row[key])
+    };
+  });
+
+  const path = coords.map((point, index) =>
+    `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
+  ).join(" ");
+
+  const circles = coords.map(point =>
+    `<circle cx="${point.x}" cy="${point.y}" r="3.5">
+      <title>${number(point.value)} ${unit} · ${formatDate(
+        point.row.measured_at,
+        {
+          day: "numeric",
+          month: "short"
+        }
+      )}</title>
+    </circle>`
+  ).join("");
+
+  const difference = values[values.length - 1] - values[0];
+  const sign = difference > 0 ? "+" : "";
+
+  setText(
+    changeId,
+    `${sign}${number(difference)} ${unit}`
+  );
+
+  const startLabel = formatDate(points[0].measured_at, {
+    day: "numeric",
+    month: "short"
+  });
+
+  const endLabel = formatDate(
+    points[points.length - 1].measured_at,
+    {
+      day: "numeric",
+      month: "short"
+    }
+  );
+
+  host.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img">
+      <line class="chart-gridline"
+        x1="${left}" y1="${top + plotHeight / 2}"
+        x2="${width - right}" y2="${top + plotHeight / 2}"></line>
+      <line class="chart-gridline"
+        x1="${left}" y1="${top + plotHeight}"
+        x2="${width - right}" y2="${top + plotHeight}"></line>
+      <text class="chart-axis" x="2" y="${top + 4}">${number(high)}</text>
+      <text class="chart-axis" x="2" y="${top + plotHeight}">${number(low)}</text>
+      <path class="chart-line" d="${path}"></path>
+      ${circles}
+      <text class="chart-axis" x="${left}" y="${height - 4}">${startLabel}</text>
+      <text class="chart-axis" text-anchor="end"
+        x="${width - right}" y="${height - 4}">${endLabel}</text>
+    </svg>
+    <div class="chart-latest">
+      ${number(values[values.length - 1])} ${unit} ·
+      ${points.length} mesure${points.length > 1 ? "s" : ""}
+    </div>
+  `;
+}
+
+/* =====================================================
+   SCANNER EAN - ZXING - OPEN FOOD FACTS
 ===================================================== */
 
 async function startScanner() {
-  if (scannerBusy) return;
+  if (scannerControls || scannerBusy) return;
+
+  const video = $("scannerVideo");
+  const panel = $("scannerPanel");
+
+  if (!video || !panel) return;
 
   if (!window.ZXing?.BrowserMultiFormatReader) {
-    showMessage("scanMessage", "Le lecteur de codes-barres n'est pas disponible. Recharge la page.", true);
+    showMessage(
+      "scannerMessage",
+      "Le lecteur ZXing n'a pas pu être chargé. Vérifie ta connexion Internet.",
+      true
+    );
+
+    panel.classList.remove("hidden");
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    panel.classList.remove("hidden");
+
+    showMessage(
+      "scannerMessage",
+      "La caméra nécessite une connexion sécurisée HTTPS et un navigateur compatible.",
+      true
+    );
+
     return;
   }
 
   scannerBusy = true;
   scanDetected = false;
 
-  $("scannerPanel")?.classList.remove("hidden");
+  panel.classList.remove("hidden");
   $("scannedProduct")?.classList.add("hidden");
-  showMessage("scanMessage", "Démarrage de la caméra…");
+
+  showMessage(
+    "scannerMessage",
+    "Demande d'autorisation de la caméra…"
+  );
 
   try {
     scannerReader = new ZXing.BrowserMultiFormatReader();
@@ -789,10 +891,11 @@ async function startScanner() {
           facingMode: { ideal: "environment" }
         }
       },
-      "scannerVideo",
+      video,
       async (result, error) => {
         if (result && !scanDetected) {
           scanDetected = true;
+
           const barcode = result.getText();
 
           await stopScanner();
@@ -801,18 +904,32 @@ async function startScanner() {
       }
     );
 
-    showMessage("scanMessage", "Place le code-barres devant la caméra.");
+    scannerBusy = false;
+
+    showMessage(
+      "scannerMessage",
+      "Place le code-barres devant la caméra."
+    );
 
   } catch (error) {
-    console.error("Erreur scanner", error);
-    showMessage("scanMessage", `Impossible de démarrer la caméra : ${error.message}`, true);
-    await stopScanner();
-  } finally {
+    console.error("Erreur caméra", error);
+
     scannerBusy = false;
+    await stopScanner();
+
+    panel.classList.remove("hidden");
+
+    showMessage(
+      "scannerMessage",
+      `Impossible d'ouvrir la caméra : ${error.message || "autorisation refusée"}.`,
+      true
+    );
   }
 }
 
 async function stopScanner() {
+  scannerBusy = true;
+
   try {
     if (scannerControls) {
       scannerControls.stop();
@@ -832,43 +949,73 @@ async function stopScanner() {
     }
 
   } catch (error) {
-    console.warn("Arrêt scanner", error);
+    console.warn("Arrêt caméra", error);
   }
 
-  $("scannerPanel")?.classList.add("hidden");
   scannerBusy = false;
+
+  $("scannerPanel")?.classList.add("hidden");
 }
 
 /* =====================================================
-   SCANNER : RECHERCHE OPEN FOOD FACTS
+   OPEN FOOD FACTS : RECHERCHE DU PRODUIT
 ===================================================== */
 
 async function lookupOpenFoodFacts(barcode) {
-  showMessage("scanMessage", "Recherche du produit…");
+  showMessage("scanSaveMessage", "");
+  $("scannedProduct")?.classList.add("hidden");
+
+  showMessage("scannerMessage", "Recherche du produit…");
 
   try {
-    const response = await fetch(
-      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`
-    );
+    const url =
+      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`;
+
+    const response = await fetch(url, {
+      headers: {
+        "Accept": "application/json"
+      }
+    });
 
     if (!response.ok) {
-      throw new Error("Le service Open Food Facts ne répond pas.");
+      throw new Error(
+        "La base de produits est momentanément indisponible."
+      );
     }
 
     const result = await response.json();
 
     if (result.status !== 1 || !result.product) {
-      throw new Error("Produit introuvable dans Open Food Facts.");
+      $("scannerPanel")?.classList.remove("hidden");
+
+      showMessage(
+        "scannerMessage",
+        `Produit ${barcode} introuvable dans Open Food Facts. Tu peux utiliser la saisie manuelle.`,
+        true
+      );
+
+      return;
     }
 
     const product = result.product;
     const nutriments = product.nutriments || {};
 
+    const kcal =
+      nutriments["energy-kcal_100g"] ??
+      (
+        nutriments["energy-kj_100g"] != null
+          ? Number(nutriments["energy-kj_100g"]) / 4.184
+          : null
+      );
+
     scannedProductData = {
       barcode,
-      name: product.product_name_fr || product.product_name || "Produit sans nom",
+      name:
+        product.product_name ||
+        product.product_name_fr ||
+        "Produit sans nom",
       brand: product.brands || "",
-      kcal: Number(nutriments["energy-kcal_100g"] || 0),
+      kcal: kcal == null ? 0 : Number(kcal),
       protein: Number(nutriments.proteins_100g || 0),
       carbs: Number(nutriments.carbohydrates_100g || 0),
       fat: Number(nutriments.fat_100g || 0)
@@ -877,102 +1024,215 @@ async function lookupOpenFoodFacts(barcode) {
     showScannedProduct();
 
   } catch (error) {
-    console.error("Recherche produit", error);
-    showMessage("scanMessage", error.message, true);
+    console.error("Recherche Open Food Facts", error);
+
+    $("scannerPanel")?.classList.remove("hidden");
+
+    showMessage(
+      "scannerMessage",
+      `Erreur de recherche : ${error.message}`,
+      true
+    );
   }
 }
 
+/* =====================================================
+   SCANNER : AFFICHAGE DU PRODUIT
+===================================================== */
+
 function showScannedProduct() {
-  if (!scannedProductData) return;
+  const product = scannedProductData;
+  if (!product) return;
+
+  setText("scannedProductName", product.name);
+
+  setText(
+    "scannedProductDetails",
+    product.brand
+      ? `Marque : ${product.brand}`
+      : "Marque non renseignée"
+  );
+
+  $("scanCalories").value = product.kcal;
+  $("scanProtein").value = product.protein;
+  $("scanCarbs").value = product.carbs;
+  $("scanFat").value = product.fat;
+
+  $("scanQuantity").value = "";
+
+  showMessage("scanSaveMessage", "");
 
   $("scannerPanel")?.classList.add("hidden");
   $("scannedProduct")?.classList.remove("hidden");
 
-  setText("scanProductName", scannedProductData.name);
-  setText("scanProductBrand", scannedProductData.brand || "Marque non renseignée");
-
-  $("scanCalories").value = scannedProductData.kcal;
-  $("scanProtein").value = scannedProductData.protein;
-  $("scanCarbs").value = scannedProductData.carbs;
-  $("scanFat").value = scannedProductData.fat;
-  $("scanQuantity").value = "";
-
   updateScanPreview();
-}
 
-function updateScanPreview() {
-  if (!scannedProductData) return;
-
-  const quantity = Number($("scanQuantity")?.value || 0);
-  const factor = quantity / 100;
-
-  const calories = Number($("scanCalories")?.value || 0) * factor;
-  const protein = Number($("scanProtein")?.value || 0) * factor;
-  const carbs = Number($("scanCarbs")?.value || 0) * factor;
-  const fat = Number($("scanFat")?.value || 0) * factor;
-
-  setText("scanPreviewCalories", `${number(calories, 0)} kcal`);
-  setText("scanPreviewProtein", `${number(protein)} g`);
-  setText("scanPreviewCarbs", `${number(carbs)} g`);
-  setText("scanPreviewFat", `${number(fat)} g`);
+  $("scanQuantity")?.focus();
 }
 
 /* =====================================================
-   SCANNER : AJOUT AU JOURNAL
+   SCANNER : CALCUL DES MACROS
+===================================================== */
+
+function updateScanPreview() {
+  const quantity = Math.max(
+    0,
+    Number($("scanQuantity")?.value || 0)
+  );
+
+  const factor = quantity / 100;
+
+  const kcal =
+    Number($("scanCalories")?.value || 0) * factor;
+
+  const protein =
+    Number($("scanProtein")?.value || 0) * factor;
+
+  const carbs =
+    Number($("scanCarbs")?.value || 0) * factor;
+
+  const fat =
+    Number($("scanFat")?.value || 0) * factor;
+
+  setText(
+    "scanPreview",
+    `Pour ${number(quantity, 0)} g : ${number(kcal, 0)} kcal · ` +
+    `${number(protein)} g protéines · ${number(carbs)} g glucides · ` +
+    `${number(fat)} g lipides`
+  );
+}
+
+/* =====================================================
+   SCANNER : ENREGISTREMENT
 ===================================================== */
 
 async function addScannedProduct() {
-  if (!scannedProductData || !currentUser) return;
-
   const button = $("addScannedProduct");
-  button.disabled = true;
 
-  const quantity = Number($("scanQuantity").value);
+  if (!client || !currentUser || !scannedProductData) {
+    showMessage(
+      "scanSaveMessage",
+      "Session ou produit manquant.",
+      true
+    );
 
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    showMessage("scanSaveMessage", "Indique une quantité en grammes supérieure à zéro.", true);
-    button.disabled = false;
+    return;
+  }
+
+  const quantityInput = $("scanQuantity");
+  const quantity = Number(quantityInput.value);
+
+  if (
+    quantityInput.value.trim() === "" ||
+    !Number.isFinite(quantity) ||
+    quantity <= 0
+  ) {
+    showMessage(
+      "scanSaveMessage",
+      "Indique obligatoirement une quantité supérieure à 0 g.",
+      true
+    );
+
+    quantityInput.focus();
+    return;
+  }
+
+  const fields = [
+    "scanCalories",
+    "scanProtein",
+    "scanCarbs",
+    "scanFat"
+  ];
+
+  if (fields.some(id =>
+    $(id).value.trim() === "" ||
+    !Number.isFinite(Number($(id).value)) ||
+    Number($(id).value) < 0
+  )) {
+    showMessage(
+      "scanSaveMessage",
+      "Vérifie les valeurs nutritionnelles.",
+      true
+    );
+
     return;
   }
 
   const factor = quantity / 100;
 
-  const payload = {
+  const row = {
     user_id: currentUser.id,
     product_name_snapshot: scannedProductData.name,
     quantity_g: quantity,
-    kcal: Number($("scanCalories").value || 0) * factor,
-    protein_g: Number($("scanProtein").value || 0) * factor,
-    carbs_g: Number($("scanCarbs").value || 0) * factor,
-    fat_g: Number($("scanFat").value || 0) * factor,
-    consumed_at: new Date().toISOString()
+    kcal: Number($("scanCalories").value) * factor,
+    protein_g: Number($("scanProtein").value) * factor,
+    carbs_g: Number($("scanCarbs").value) * factor,
+    fat_g: Number($("scanFat").value) * factor
   };
+
+  button.disabled = true;
+
+  showMessage(
+    "scanSaveMessage",
+    "Enregistrement en cours…"
+  );
 
   try {
     const { error } = await client
       .from("nutrition_logs")
-      .insert(payload);
+      .insert(row);
 
     if (error) throw error;
 
-    showMessage("scanSaveMessage", "Consommation ajoutée au journal.");
-    await loadNutrition();
+    const productName = scannedProductData.name;
 
-    $("scannedProduct")?.classList.add("hidden");
     scannedProductData = null;
 
+    const refreshed = await loadNutrition();
+
+    if (!refreshed) {
+      showMessage(
+        "scanSaveMessage",
+        "Produit enregistré, mais actualisation des macros impossible. Utilise Actualiser.",
+        true
+      );
+
+      return;
+    }
+
+    showMessage(
+      "scanSaveMessage",
+      `${productName} (${quantity} g) ajouté au journal.`
+    );
+
+    setTimeout(() => {
+      $("scannedProduct")?.classList.add("hidden");
+    }, 2500);
+
   } catch (error) {
-    console.error("Ajout consommation", error);
-    showMessage("scanSaveMessage", `Impossible d'enregistrer : ${error.message}`, true);
+    console.error("Erreur enregistrement scanner :", error);
+
+    showMessage(
+      "scanSaveMessage",
+      `Échec de l'enregistrement : ${error.message}`,
+      true
+    );
+
   } finally {
     button.disabled = false;
   }
 }
 
+/* =====================================================
+   SCANNER : ANNULATION
+===================================================== */
+
 function cancelScannedProduct() {
   scannedProductData = null;
+
   $("scannedProduct")?.classList.add("hidden");
-  showMessage("scanMessage", "");
+  $("scannerPanel")?.classList.add("hidden");
+
   showMessage("scanSaveMessage", "");
 }
 
@@ -981,29 +1241,46 @@ function cancelScannedProduct() {
 ===================================================== */
 
 async function connectWithings() {
-  const button = $("withingsConnect");
-  button.disabled = true;
+  showMessage(
+    "withingsMessage",
+    "Ouverture de la connexion Withings…"
+  );
 
-  showMessage("withingsMessage", "Connexion à Withings…");
+  const { data: sessionData } = await client.auth.getSession();
+  const token = sessionData.session?.access_token;
 
-  try {
-    const { data, error } = await client.functions.invoke(
-      "withings-connect"
+  if (!token) {
+    showMessage(
+      "withingsMessage",
+      "Session expirée. Reconnecte-toi.",
+      true
     );
 
-    if (error) throw error;
-
-    if (!data?.url) {
-      throw new Error("L'URL de connexion Withings n'a pas été reçue.");
-    }
-
-    window.location.href = data.url;
-
-  } catch (error) {
-    console.error("Connexion Withings", error);
-    showMessage("withingsMessage", error.message, true);
-    button.disabled = false;
+    return;
   }
+
+  const { data, error } = await client.functions.invoke(
+    "withings-connect",
+    {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+
+  if (error || !data?.url) {
+    console.error(error, data);
+
+    showMessage(
+      "withingsMessage",
+      error?.message || "Impossible de démarrer la connexion.",
+      true
+    );
+
+    return;
+  }
+
+  window.location.href = data.url;
 }
 
 /* =====================================================
@@ -1012,6 +1289,8 @@ async function connectWithings() {
 
 async function syncWithings() {
   const button = $("withingsSync");
+  if (!button) return;
+
   button.disabled = true;
 
   showMessage(
