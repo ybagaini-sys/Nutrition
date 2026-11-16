@@ -14,8 +14,6 @@ let currentProfile = null;
 let currentPeriod = 7;
 let withingsRows = [];
 let todayFoods = [];
-let libraryProducts = [];
-let selectedLibraryProductId = null;
 
 let scannerReader = null;
 let scannerControls = null;
@@ -133,16 +131,6 @@ async function init() {
 
   $("withingsConnect")?.addEventListener("click", connectWithings);
   $("withingsSync")?.addEventListener("click", syncWithings);
-  $("menuToggle")?.addEventListener("click", toggleMainMenu);
-  $("saveScannedToLibrary")?.addEventListener("click", saveScannedToLibrary);
-  $("librarySearch")?.addEventListener("input", renderFoodLibrary);
-
-  document.querySelectorAll("#mainMenu a").forEach(link => {
-    link.addEventListener("click", () => {
-      $("mainMenu")?.classList.add("hidden");
-      $("menuToggle")?.setAttribute("aria-expanded", "false");
-    });
-  });
 
   $("startScanner")?.addEventListener("click", startScanner);
   $("stopScanner")?.addEventListener("click", stopScanner);
@@ -262,7 +250,6 @@ async function loadDashboard() {
   await Promise.all([
     loadProfile(),
     loadNutrition(),
-    loadFoodLibrary(),
     loadWorkouts(),
     loadWithings()
   ]);
@@ -311,167 +298,6 @@ async function loadProfile() {
   setText("weightGoal", `${TARGET_WEIGHT} kg`);
   setText("proteinTarget", `Objectif : ${TARGET_PROTEIN} g`);
   setText("targetCaloriesValue", `${CALORIE_TARGET} kcal`);
-}
-
-/* =====================================================
-   NAVIGATION
-===================================================== */
-
-function toggleMainMenu() {
-  const menu = $("mainMenu");
-  const button = $("menuToggle");
-  if (!menu || !button) return;
-  const willOpen = menu.classList.contains("hidden");
-  menu.classList.toggle("hidden", !willOpen);
-  button.setAttribute("aria-expanded", String(willOpen));
-}
-
-/* =====================================================
-   BIBLIOTHÈQUE ALIMENTAIRE PERSONNELLE
-===================================================== */
-
-async function loadFoodLibrary() {
-  const { data, error } = await client
-    .from("food_products")
-    .select("id,name,brand,barcode,serving_basis_g,kcal,protein_g,carbs_g,fat_g,sugars_g,fiber_g,source,created_at")
-    .eq("user_id", currentUser.id)
-    .order("name", { ascending: true });
-
-  if (error) {
-    console.error("Erreur bibliothèque", error);
-    showMessage("libraryMessage", `Impossible de charger la bibliothèque : ${error.message}`, true);
-    return false;
-  }
-
-  libraryProducts = data || [];
-  renderFoodLibrary();
-  return true;
-}
-
-function renderFoodLibrary() {
-  const host = $("foodLibrary");
-  if (!host) return;
-
-  const query = String($("librarySearch")?.value || "").trim().toLocaleLowerCase("fr");
-  const filtered = libraryProducts.filter(product =>
-    [product.name, product.brand, product.barcode].some(value =>
-      String(value || "").toLocaleLowerCase("fr").includes(query)
-    )
-  );
-
-  setText("libraryCount", `${libraryProducts.length} produit${libraryProducts.length > 1 ? "s" : ""}`);
-
-  if (!filtered.length) {
-    host.innerHTML = libraryProducts.length
-      ? '<p class="muted">Aucun résultat pour cette recherche.</p>'
-      : '<p class="muted">Ta bibliothèque est vide. Après un scan, choisis « Ajouter à ma bibliothèque » pour conserver un produit.</p>';
-    return;
-  }
-
-  host.innerHTML = filtered.map(product => `
-    <div class="library-item">
-      <div class="library-item-info">
-        <strong>${escapeHTML(product.name)}</strong>
-        <small>${escapeHTML(product.brand || "Sans marque")} · ${number(product.kcal, 0)} kcal / 100 g · ${number(product.protein_g)} g protéines</small>
-      </div>
-      <div class="library-item-actions">
-        <button class="quiet" type="button" data-use-product="${escapeHTML(product.id)}">Utiliser</button>
-        <button class="quiet danger-text" type="button" data-remove-product="${escapeHTML(product.id)}" aria-label="Supprimer ${escapeHTML(product.name)}">Retirer</button>
-      </div>
-    </div>
-  `).join("");
-
-  host.querySelectorAll("[data-use-product]").forEach(button => {
-    button.addEventListener("click", () => useLibraryProduct(button.dataset.useProduct));
-  });
-  host.querySelectorAll("[data-remove-product]").forEach(button => {
-    button.addEventListener("click", () => removeLibraryProduct(button.dataset.removeProduct));
-  });
-}
-
-async function saveScannedToLibrary() {
-  if (!scannedProductData || !currentUser) return;
-  const button = $("saveScannedToLibrary");
-  button.disabled = true;
-  showMessage("scanSaveMessage", "Ajout à la bibliothèque…");
-
-  try {
-    let existing = null;
-    if (scannedProductData.barcode) {
-      const result = await client.from("food_products")
-        .select("id")
-        .eq("user_id", currentUser.id)
-        .eq("barcode", scannedProductData.barcode)
-        .maybeSingle();
-      if (result.error) throw result.error;
-      existing = result.data;
-    }
-
-    if (existing) {
-      scannedProductData.id = existing.id;
-      showMessage("scanSaveMessage", "Ce produit est déjà dans ta bibliothèque. Tu peux l'utiliser pour ton journal.");
-      return;
-    }
-
-    const { data, error } = await client.from("food_products").insert({
-      user_id: currentUser.id,
-      name: scannedProductData.name,
-      brand: scannedProductData.brand || null,
-      barcode: scannedProductData.barcode || null,
-      serving_basis_g: 100,
-      kcal: Number($("scanCalories").value),
-      protein_g: Number($("scanProtein").value),
-      carbs_g: Number($("scanCarbs").value),
-      fat_g: Number($("scanFat").value),
-      source: "open_food_facts"
-    }).select("id").single();
-
-    if (error) throw error;
-    scannedProductData.id = data.id;
-    await loadFoodLibrary();
-    showMessage("scanSaveMessage", "Produit ajouté à ta bibliothèque. Il n'a pas encore été ajouté au journal.");
-  } catch (error) {
-    console.error("Ajout bibliothèque", error);
-    showMessage("scanSaveMessage", `Impossible d'ajouter ce produit : ${error.message}`, true);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-function useLibraryProduct(id) {
-  const product = libraryProducts.find(item => item.id === id);
-  if (!product) return;
-
-  scannedProductData = {
-    id: product.id,
-    barcode: product.barcode,
-    name: product.name,
-    brand: product.brand || "",
-    kcal: Number(product.kcal || 0),
-    protein: Number(product.protein_g || 0),
-    carbs: Number(product.carbs_g || 0),
-    fat: Number(product.fat_g || 0)
-  };
-
-  showScannedProduct();
-  setText("scanSaveMessage", "Produit de ta bibliothèque : indique la quantité consommée.");
-  document.getElementById("scannedProduct")?.scrollIntoView({ behavior: "smooth", block: "center" });
-}
-
-async function removeLibraryProduct(id) {
-  const product = libraryProducts.find(item => item.id === id);
-  if (!product || !confirm(`Retirer « ${product.name} » de ta bibliothèque ? Les consommations déjà enregistrées seront conservées.`)) return;
-
-  const { error } = await client.from("food_products")
-    .delete().eq("id", id).eq("user_id", currentUser.id);
-
-  if (error) {
-    showMessage("libraryMessage", `Suppression impossible : ${error.message}`, true);
-    return;
-  }
-
-  await loadFoodLibrary();
-  showMessage("libraryMessage", "Produit retiré de ta bibliothèque.");
 }
 
 /* =====================================================
@@ -888,6 +714,53 @@ function renderSingleChart(containerId, rows, key, title, unit) {
 }
 
 /* =====================================================
+   SAISIE MANUELLE DU POIDS
+===================================================== */
+
+async function saveManualWeight(event) {
+  event.preventDefault();
+
+  const button = $("weightForm").querySelector(
+    'button[type="submit"]'
+  );
+
+  button.disabled = true;
+
+  showMessage("weightMessage", "Enregistrement…");
+
+  const weight = Number($("manualWeight").value);
+  const date = $("manualWeightDate").value || new Date().toISOString().slice(0, 10);
+
+  if (!Number.isFinite(weight) || weight <= 0) {
+    showMessage("weightMessage", "Indique un poids valide.", true);
+    button.disabled = false;
+    return;
+  }
+
+  const { error } = await client
+    .from("body_measurements")
+    .insert({
+      user_id: currentUser.id,
+      measured_at: new Date(`${date}T12:00:00`).toISOString(),
+      source: "manual",
+      external_id: `manual-${Date.now()}`,
+      weight_kg: weight
+    });
+
+  if (error) {
+    showMessage("weightMessage", error.message, true);
+    button.disabled = false;
+    return;
+  }
+
+  $("weightForm").reset();
+  showMessage("weightMessage", "Poids enregistré.");
+  button.disabled = false;
+
+  await loadWithings();
+}
+
+/* =====================================================
    SCANNER : DÉMARRAGE ET ARRÊT
 ===================================================== */
 
@@ -992,7 +865,6 @@ async function lookupOpenFoodFacts(barcode) {
     const nutriments = product.nutriments || {};
 
     scannedProductData = {
-      id: null,
       barcode,
       name: product.product_name_fr || product.product_name || "Produit sans nom",
       brand: product.brands || "",
@@ -1024,8 +896,6 @@ function showScannedProduct() {
   $("scanCarbs").value = scannedProductData.carbs;
   $("scanFat").value = scannedProductData.fat;
   $("scanQuantity").value = "";
-
-  $("saveScannedToLibrary").disabled = false;
 
   updateScanPreview();
 }
@@ -1069,7 +939,6 @@ async function addScannedProduct() {
 
   const payload = {
     user_id: currentUser.id,
-    product_id: scannedProductData.id || null,
     product_name_snapshot: scannedProductData.name,
     quantity_g: quantity,
     kcal: Number($("scanCalories").value || 0) * factor,
