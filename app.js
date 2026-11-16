@@ -14,6 +14,7 @@ let currentProfile = null;
 let currentPeriod = 7;
 let withingsRows = [];
 let todayFoods = [];
+let libraryProducts = [];
 
 let scannerReader = null;
 let scannerControls = null;
@@ -136,6 +137,16 @@ async function init() {
   $("stopScanner")?.addEventListener("click", stopScanner);
   $("addScannedProduct")?.addEventListener("click", addScannedProduct);
   $("cancelScannedProduct")?.addEventListener("click", cancelScannedProduct);
+  $("saveScannedToLibrary")?.addEventListener("click", saveScannedToLibrary);
+  $("librarySearch")?.addEventListener("input", renderFoodLibrary);
+
+  $("menuToggle")?.addEventListener("click", () => {
+    const menu = $("mainMenu");
+    const button = $("menuToggle");
+    const isOpen = !menu?.classList.contains("hidden");
+    menu?.classList.toggle("hidden", isOpen);
+    button?.setAttribute("aria-expanded", String(!isOpen));
+  });
 
   [
     "scanCalories",
@@ -248,6 +259,7 @@ async function loadDashboard() {
   await Promise.all([
     loadProfile(),
     loadNutrition(),
+    loadFoodLibrary(),
     loadWorkouts(),
     loadWithings()
   ]);
@@ -1018,7 +1030,9 @@ async function lookupOpenFoodFacts(barcode) {
       kcal: kcal == null ? 0 : Number(kcal),
       protein: Number(nutriments.proteins_100g || 0),
       carbs: Number(nutriments.carbohydrates_100g || 0),
-      fat: Number(nutriments.fat_100g || 0)
+      fat: Number(nutriments.fat_100g || 0),
+      sugars: Number(nutriments.sugars_100g || 0),
+      fiber: Number(nutriments.fiber_100g || 0)
     };
 
     showScannedProduct();
@@ -1100,6 +1114,186 @@ function updateScanPreview() {
     `${number(protein)} g protéines · ${number(carbs)} g glucides · ` +
     `${number(fat)} g lipides`
   );
+}
+
+/* =====================================================
+   BIBLIOTHÈQUE ALIMENTAIRE PERSONNELLE
+===================================================== */
+
+async function loadFoodLibrary() {
+  if (!client || !currentUser) return false;
+
+  const { data, error } = await client
+    .from("food_products")
+    .select("id,user_id,name,brand,barcode,serving_basis_g,kcal,protein_g,carbs_g,fat_g,sugars_g,fiber_g,source")
+    .eq("user_id", currentUser.id)
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Erreur bibliothèque alimentaire :", error);
+    showMessage("libraryMessage", `Chargement impossible : ${error.message}`, true);
+    return false;
+  }
+
+  libraryProducts = data || [];
+  renderFoodLibrary();
+  return true;
+}
+
+function renderFoodLibrary() {
+  const host = $("foodLibrary");
+  if (!host) return;
+
+  const term = ($("librarySearch")?.value || "").trim().toLocaleLowerCase("fr");
+  const filtered = libraryProducts.filter(product =>
+    [product.name, product.brand, product.barcode]
+      .some(value => String(value || "").toLocaleLowerCase("fr").includes(term))
+  );
+
+  setText("libraryCount", `${libraryProducts.length} produit${libraryProducts.length > 1 ? "s" : ""}`);
+
+  if (!filtered.length) {
+    host.innerHTML = libraryProducts.length
+      ? '<p class="muted">Aucun produit ne correspond à cette recherche.</p>'
+      : '<p class="muted">Ta bibliothèque est vide. Après un scan, utilise « Ajouter à ma bibliothèque » pour conserver un produit.</p>';
+    return;
+  }
+
+  host.innerHTML = filtered.map(product => `
+    <div class="library-item">
+      <div class="library-item-info">
+        <strong>${escapeHTML(product.name)}</strong>
+        <small>${escapeHTML(product.brand || "Sans marque")} · ${number(product.kcal, 0)} kcal · ${number(product.protein_g)} g protéines / 100 g</small>
+      </div>
+      <div class="library-item-actions">
+        <button class="primary compact" type="button" data-use-food="${escapeHTML(product.id)}">Ajouter au journal</button>
+        <button class="quiet danger-text" type="button" data-delete-library="${escapeHTML(product.id)}">Retirer</button>
+      </div>
+    </div>
+  `).join("");
+
+  host.querySelectorAll("[data-use-food]").forEach(button => {
+    button.addEventListener("click", () => addLibraryProductToJournal(button.dataset.useFood));
+  });
+  host.querySelectorAll("[data-delete-library]").forEach(button => {
+    button.addEventListener("click", () => deleteLibraryProduct(button.dataset.deleteLibrary));
+  });
+}
+
+async function saveScannedToLibrary() {
+  if (!client || !currentUser || !scannedProductData) {
+    showMessage("scanSaveMessage", "Aucun produit scanné à enregistrer.", true);
+    return;
+  }
+
+  const product = scannedProductData;
+  const name = product.name.trim();
+  const brand = product.brand.trim();
+  if (!name) {
+    showMessage("scanSaveMessage", "Le produit doit avoir un nom.", true);
+    return;
+  }
+
+  const button = $("saveScannedToLibrary");
+  button.disabled = true;
+  showMessage("scanSaveMessage", "Vérification des doublons…");
+
+  try {
+    let duplicateQuery = client.from("food_products").select("id,name").eq("user_id", currentUser.id);
+    if (product.barcode) {
+      duplicateQuery = duplicateQuery.eq("barcode", product.barcode);
+    } else {
+      duplicateQuery = duplicateQuery.eq("name", name);
+      duplicateQuery = brand
+        ? duplicateQuery.eq("brand", brand)
+        : duplicateQuery.is("brand", null);
+    }
+    const { data: duplicates, error: duplicateError } = await duplicateQuery.limit(1);
+    if (duplicateError) throw duplicateError;
+
+    if (duplicates?.length) {
+      showMessage("scanSaveMessage", "Ce produit est déjà dans ta bibliothèque. Tu peux le retrouver dans la liste ci-dessous.");
+      await loadFoodLibrary();
+      return;
+    }
+
+    const row = {
+      user_id: currentUser.id,
+      name,
+      brand: brand || null,
+      barcode: product.barcode || null,
+      serving_basis_g: 100,
+      kcal: Number($("scanCalories").value),
+      protein_g: Number($("scanProtein").value),
+      carbs_g: Number($("scanCarbs").value),
+      fat_g: Number($("scanFat").value),
+      sugars_g: Number(product.sugars || 0),
+      fiber_g: Number(product.fiber || 0),
+      source: "openfoodfacts"
+    };
+
+    const { error } = await client.from("food_products").insert(row);
+    if (error) throw error;
+
+    await loadFoodLibrary();
+    showMessage("scanSaveMessage", "Produit ajouté à ta bibliothèque. Il n'a pas été ajouté au journal.");
+  } catch (error) {
+    console.error("Ajout bibliothèque :", error);
+    showMessage("scanSaveMessage", `Ajout impossible : ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function addLibraryProductToJournal(id) {
+  const product = libraryProducts.find(item => item.id === id);
+  if (!product) return;
+
+  const basis = Number(product.serving_basis_g || 100);
+  const raw = prompt(`Quantité consommée en grammes pour « ${product.name} » ?`, String(basis));
+  if (raw === null) return;
+  const quantity = Number(raw.replace(",", "."));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    alert("Indique une quantité supérieure à 0 g.");
+    return;
+  }
+
+  const factor = quantity / 100;
+  const row = {
+    user_id: currentUser.id,
+    product_id: product.id,
+    product_name_snapshot: product.name,
+    quantity_g: quantity,
+    kcal: Number(product.kcal || 0) * factor,
+    protein_g: Number(product.protein_g || 0) * factor,
+    carbs_g: Number(product.carbs_g || 0) * factor,
+    fat_g: Number(product.fat_g || 0) * factor
+  };
+
+  const { error } = await client.from("nutrition_logs").insert(row);
+  if (error) {
+    alert(`Impossible d'ajouter cet aliment : ${error.message}`);
+    return;
+  }
+  await loadNutrition();
+  showMessage("libraryMessage", `${product.name} ajouté au journal (${number(quantity, 0)} g).`);
+}
+
+async function deleteLibraryProduct(id) {
+  const product = libraryProducts.find(item => item.id === id);
+  if (!product) return;
+  if (!confirm(`Retirer « ${product.name} » de ta bibliothèque ? Les consommations déjà enregistrées ne seront pas supprimées.`)) return;
+
+  const { error } = await client.from("food_products")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", currentUser.id);
+  if (error) {
+    showMessage("libraryMessage", `Suppression impossible : ${error.message}`, true);
+    return;
+  }
+  await loadFoodLibrary();
+  showMessage("libraryMessage", "Produit retiré de ta bibliothèque.");
 }
 
 /* =====================================================
