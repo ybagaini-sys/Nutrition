@@ -7,8 +7,10 @@ const SUPABASE_ANON_KEY = window.FORME_CONFIG?.SUPABASE_PUBLISHABLE_KEY;
 const TARGET_WEIGHT = 72;
 const TARGET_PROTEIN = 160;
 const DAILY_DEFICIT_TARGET = 450;
-let garminDailyCalories = null;
+let garminDailyCalories = null; // dépense cumulée Garmin depuis minuit
+let garminProjectedDailyCalories = null; // estimation de la dépense sur 24 h
 let garminEnergyDate = null;
+let garminProjectionBasis = "";
 
 let client = null;
 let currentUser = null;
@@ -444,7 +446,7 @@ async function loadProfile() {
   setText("targetValue", `${TARGET_WEIGHT} kg`);
   setText("weightGoal", `${TARGET_WEIGHT} kg`);
   setText("proteinTarget", `Objectif : ${TARGET_PROTEIN} g`);
-  setText("targetCaloriesValue", Number.isFinite(garminDailyCalories) && garminDailyCalories > 0 ? `${number(Math.max(0, garminDailyCalories - DAILY_DEFICIT_TARGET), 0)} kcal` : "En attente Garmin");
+  setText("targetCaloriesValue", Number.isFinite(garminProjectedDailyCalories) && garminProjectedDailyCalories > 0 ? `${number(Math.max(0, garminProjectedDailyCalories - DAILY_DEFICIT_TARGET), 0)} kcal` : "En attente Garmin");
   return true;
 }
 
@@ -492,34 +494,69 @@ function localDateKey(date = new Date()) {
 async function loadGarminDailyEnergy() {
   if (!client || !currentUser) return false;
 
-  const today = localDateKey();
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterday = localDateKey(yesterdayDate);
+  const now = new Date();
+  const today = localDateKey(now);
+  const historyStartDate = new Date(now);
+  historyStartDate.setDate(historyStartDate.getDate() - 8);
+  const startDate = localDateKey(historyStartDate);
 
+  // On récupère les journées précédentes pour ne pas confondre la dépense
+  // cumulée à l'heure de consultation avec une dépense de 24 heures.
   const { data, error } = await client
     .from("daily_metrics")
     .select("metric_date,total_calories_kcal,recorded_at")
     .eq("user_id", currentUser.id)
     .eq("source", "garmin")
-    .in("metric_date", [today, yesterday])
-    .order("metric_date", { ascending: false })
-    .limit(2);
+    .gte("metric_date", startDate)
+    .lte("metric_date", today)
+    .order("metric_date", { ascending: false });
 
   if (error) {
     console.warn("Dépense Garmin non accessible :", error.message);
     garminDailyCalories = null;
+    garminProjectedDailyCalories = null;
     garminEnergyDate = null;
+    garminProjectionBasis = "";
     renderCalorieBudget();
     return false;
   }
 
-  const rows = data || [];
-  const selected = rows.find(row => row.metric_date === today && Number(row.total_calories_kcal) > 0) || null;
+  const rows = (data || []).filter(row => Number(row.total_calories_kcal) > 0);
+  const todayRow = rows.find(row => row.metric_date === today) || null;
+  garminDailyCalories = todayRow ? Number(todayRow.total_calories_kcal) : null;
+  garminEnergyDate = todayRow?.metric_date || null;
 
-  // Ne jamais réutiliser la dépense d'hier pour calculer le déficit d'aujourd'hui.
-  garminDailyCalories = selected ? Number(selected.total_calories_kcal) : null;
-  garminEnergyDate = selected?.metric_date || null;
+  const completedDays = rows
+    .filter(row => row.metric_date < today)
+    .slice(0, 7)
+    .map(row => Number(row.total_calories_kcal))
+    .filter(value => Number.isFinite(value) && value > 0);
+  const historicalAverage = completedDays.length
+    ? completedDays.reduce((sum, value) => sum + value, 0) / completedDays.length
+    : null;
+
+  if (garminDailyCalories && now.getHours() + now.getMinutes() / 60 >= 1) {
+    const elapsedHours = Math.max(1, now.getHours() + now.getMinutes() / 60);
+    const todayProjection = garminDailyCalories / elapsedHours * 24;
+    if (historicalAverage) {
+      // La moyenne des jours complets stabilise le budget; la tendance du jour
+      // l'ajuste progressivement, avec un poids plafonné à 50 %.
+      const currentDayWeight = Math.min(0.5, elapsedHours / 24 * 0.5);
+      garminProjectedDailyCalories = historicalAverage * (1 - currentDayWeight)
+        + todayProjection * currentDayWeight;
+      garminProjectionBasis = `Projection combinant ${completedDays.length} jours Garmin et la tendance du jour`;
+    } else {
+      garminProjectedDailyCalories = todayProjection;
+      garminProjectionBasis = "Projection provisoire à partir de la dépense cumulée du jour";
+    }
+  } else if (historicalAverage) {
+    garminProjectedDailyCalories = historicalAverage;
+    garminProjectionBasis = `Moyenne des ${completedDays.length} dernières journées Garmin complètes; actualisation après synchronisation du jour`;
+  } else {
+    garminProjectedDailyCalories = null;
+    garminProjectionBasis = "";
+  }
+
   renderCalorieBudget();
   return true;
 }
@@ -528,12 +565,14 @@ function renderCalorieBudget(consumedOverride) {
   const consumed = consumedOverride ?? todayFoods.reduce(
     (sum, item) => sum + Number(item.kcal || 0), 0
   );
-  const expenditureAvailable = Number.isFinite(garminDailyCalories) && garminDailyCalories > 0;
+  const expenditureAvailable = Number.isFinite(garminProjectedDailyCalories)
+    && garminProjectedDailyCalories > 0;
   const calculatedBudget = expenditureAvailable
-    ? Math.max(0, garminDailyCalories - DAILY_DEFICIT_TARGET)
+    ? Math.max(0, garminProjectedDailyCalories - DAILY_DEFICIT_TARGET)
     : null;
   const remaining = calculatedBudget === null ? null : calculatedBudget - consumed;
-  const estimatedDeficit = expenditureAvailable ? garminDailyCalories - consumed : null;
+  const estimatedDeficit = expenditureAvailable ? garminProjectedDailyCalories - consumed : null;
+  const consumedPercent = calculatedBudget > 0 ? consumed / calculatedBudget * 100 : 0;
 
   setText("dailyCalorieBudget", calculatedBudget === null
     ? "En attente Garmin"
@@ -550,29 +589,28 @@ function renderCalorieBudget(consumedOverride) {
       ? "Encore disponibles aujourd'hui"
       : "Budget dépassé");
 
-  const progress = calculatedBudget > 0
-    ? Math.max(0, Math.min(100, consumed / calculatedBudget * 100))
-    : 0;
   const bar = $("calorieBudgetProgress");
-  if (bar) bar.style.width = `${progress}%`;
+  if (bar) bar.style.width = `${Math.max(0, Math.min(100, consumedPercent))}%`;
   const progressText = $("calorieBudgetProgressText");
   if (progressText) progressText.textContent = calculatedBudget === null
     ? "En attente des données Garmin"
-    : `${number(progress, 0)} % du budget`;
+    : `${number(consumedPercent, 0)} % du budget`;
 
   setText("garminDailyExpenditure", expenditureAvailable
-    ? `${number(garminDailyCalories, 0)} kcal`
+    ? `${number(garminProjectedDailyCalories, 0)} kcal estimées sur 24 h`
     : "En attente des données Garmin");
   setText("estimatedDailyDeficit", expenditureAvailable
     ? `${estimatedDeficit >= 0 ? "−" : "+"}${number(Math.abs(estimatedDeficit), 0)} kcal ${estimatedDeficit >= 0 ? "de déficit estimé" : "de surplus estimé"}`
     : "Disponible après synchronisation Garmin");
-  setText("deficitTargetNote", `Budget = dépense Garmin − ${number(DAILY_DEFICIT_TARGET, 0)} kcal. Estimation évolutive pendant la journée.`);
+  setText("deficitTargetNote", expenditureAvailable
+    ? `Objectif : ${number(DAILY_DEFICIT_TARGET, 0)} kcal de déficit. ${garminProjectionBasis}.`
+    : `Déficit cible : ${number(DAILY_DEFICIT_TARGET, 0)} kcal; estimation en attente des données Garmin.`);
   setText("garminEnergyDate", garminEnergyDate
-    ? `Dépense Garmin du ${formatDate(`${garminEnergyDate}T12:00:00`, { day: "numeric", month: "short" })}`
-    : "La dépense totale Garmin apparaîtra ici après synchronisation.");
+    ? `Dépense cumulée aujourd'hui : ${number(garminDailyCalories, 0)} kcal. Budget basé sur une estimation de la journée complète.`
+    : (garminProjectionBasis || "La dépense Garmin du jour apparaîtra après synchronisation."));
   setText("calorieTarget", calculatedBudget === null
-    ? "Budget dynamique : en attente Garmin"
-    : `Budget dynamique : ${number(calculatedBudget, 0)} kcal`);
+    ? "Budget quotidien : en attente Garmin"
+    : `Budget quotidien : ${number(calculatedBudget, 0)} kcal`);
   setText("targetCaloriesValue", calculatedBudget === null
     ? "En attente Garmin"
     : `${number(calculatedBudget, 0)} kcal`);
@@ -664,7 +702,7 @@ function renderNutrition() {
 
   setText("caloriesValue", number(calories, 0));
   setText("proteinValue", `${number(protein)} g`);
-  setText("targetCaloriesValue", Number.isFinite(garminDailyCalories) && garminDailyCalories > 0 ? `${number(Math.max(0, garminDailyCalories - DAILY_DEFICIT_TARGET), 0)} kcal` : "En attente Garmin");
+  setText("targetCaloriesValue", Number.isFinite(garminProjectedDailyCalories) && garminProjectedDailyCalories > 0 ? `${number(Math.max(0, garminProjectedDailyCalories - DAILY_DEFICIT_TARGET), 0)} kcal` : "En attente Garmin");
   renderCalorieBudget(calories);
 
   setText(
