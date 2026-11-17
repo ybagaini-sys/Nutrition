@@ -161,6 +161,7 @@ async function init() {
   $("withingsSync")?.addEventListener("click", syncWithings);
 
   $("garminSync")?.addEventListener("click", syncGarmin);
+  $("recoverySync")?.addEventListener("click", syncGarmin);
   $("hevySync")?.addEventListener("click", syncHevy);
 
   $("startScanner")?.addEventListener("click", startScanner);
@@ -310,7 +311,8 @@ async function loadDashboard(manual = false) {
     ["Withings", loadWithings],
     ["Statut Garmin", () => loadProviderConnectionStatus("garmin")],
     ["Statut Hevy", () => loadProviderConnectionStatus("hevy")],
-    ["Dépense Garmin", loadGarminDailyEnergy]
+    ["Dépense Garmin", loadGarminDailyEnergy],
+    ["Récupération Garmin", loadRecoveryMetrics]
   ];
 
   try {
@@ -516,6 +518,65 @@ function renderCalorieBudget(consumedOverride) {
   setText("garminEnergyDate", garminEnergyDate
     ? `Dépense Garmin du ${formatDate(`${garminEnergyDate}T12:00:00`, { day: "numeric", month: "short" })}`
     : "La dépense totale Garmin apparaîtra ici après synchronisation.");
+}
+
+/* =====================================================
+   RÉCUPÉRATION GARMIN
+===================================================== */
+
+async function loadRecoveryMetrics() {
+  if (!client || !currentUser) return false;
+
+  const { data, error } = await client
+    .from("daily_metrics")
+    .select("metric_date,sleep_minutes,resting_hr_bpm,stress_score,body_battery")
+    .eq("user_id", currentUser.id)
+    .eq("source", "garmin")
+    .order("metric_date", { ascending: false })
+    .limit(7);
+
+  if (error) {
+    console.warn("Données de récupération Garmin non accessibles :", error.message);
+    setText("recoveryStatus", "Données indisponibles");
+    setText("recoveryGuidance", "Impossible de lire les données Garmin. Réessaie après vérification de la synchronisation.");
+    return false;
+  }
+
+  const rows = data || [];
+  const latest = rows.find(row => [row.sleep_minutes, row.resting_hr_bpm, row.stress_score, row.body_battery]
+    .some(value => value !== null && value !== undefined && value !== ""));
+
+  if (!latest) {
+    setText("recoveryStatus", "En attente des données");
+    setText("recoverySleep", "—");
+    setText("recoveryRestingHr", "—");
+    setText("recoveryStress", "—");
+    setText("recoveryBodyBattery", "—");
+    setText("recoveryDate", "Aucune donnée de récupération Garmin disponible pour les 7 derniers jours.");
+    setText("recoveryGuidance", "Lance une synchronisation Garmin. Si les données restent absentes, elles ne sont peut-être pas fournies par ton appareil ou ton compte.");
+    return true;
+  }
+
+  const hasAny = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+  setText("recoverySleep", hasAny(latest.sleep_minutes)
+    ? `${Math.floor(Number(latest.sleep_minutes) / 60)} h ${String(Math.round(Number(latest.sleep_minutes) % 60)).padStart(2, "0")}` : "Non disponible");
+  setText("recoveryRestingHr", hasAny(latest.resting_hr_bpm) ? `${number(latest.resting_hr_bpm, 0)} bpm` : "Non disponible");
+  setText("recoveryStress", hasAny(latest.stress_score) ? `${number(latest.stress_score, 0)} / 100` : "Non disponible");
+  setText("recoveryBodyBattery", hasAny(latest.body_battery) ? `${number(latest.body_battery, 0)} / 100` : "Non disponible");
+  setText("recoveryStatus", "Données Garmin reçues");
+  setText("recoveryDate", `Dernières données : ${formatDate(`${latest.metric_date}T12:00:00`, { day: "numeric", month: "short", year: "numeric" })}`);
+
+  const sleepLow = hasAny(latest.sleep_minutes) && Number(latest.sleep_minutes) < 360;
+  const batteryLow = hasAny(latest.body_battery) && Number(latest.body_battery) < 30;
+  const batteryHigh = hasAny(latest.body_battery) && Number(latest.body_battery) >= 70;
+  let guidance = "Consulte ces indicateurs avec tes sensations et ta fatigue. Aucun indicateur isolé ne décide de l'intensité de ta séance.";
+  if (sleepLow || batteryLow) {
+    guidance = "Quelques signaux invitent à la prudence. Si tu te sens également fatigué, réduis l'intensité ou privilégie une séance légère.";
+  } else if (batteryHigh && hasAny(latest.sleep_minutes) && !sleepLow) {
+    guidance = "Les indicateurs disponibles sont plutôt favorables. Confirme avec tes sensations avant de maintenir une séance intense.";
+  }
+  setText("recoveryGuidance", guidance);
+  return true;
 }
 
 /* =====================================================
@@ -1870,6 +1931,8 @@ async function runProviderSync(provider) {
 
     if (provider === "hevy") {
       await loadWorkouts();
+    } else if (provider === "garmin") {
+      await Promise.allSettled([loadGarminDailyEnergy(), loadRecoveryMetrics()]);
     }
 
     await loadProviderConnectionStatus(provider);

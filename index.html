@@ -448,11 +448,20 @@
         <p id="hevyMessage" class="message" role="status"></p>
       </article>
 
-      <article class="tile source">
+      <article class="tile source recovery-tile">
         <span class="tile-icon">🌙</span>
         <h3>Récupération</h3>
-        <p>Sommeil, fréquence cardiaque et stress.</p>
-        <span class="status">En attente Garmin</span>
+        <p>Dernières données quotidiennes transmises par Garmin.</p>
+        <span class="status" id="recoveryStatus">En attente des données</span>
+        <div class="recovery-metrics">
+          <div><small>Sommeil</small><strong id="recoverySleep">—</strong></div>
+          <div><small>FC au repos</small><strong id="recoveryRestingHr">—</strong></div>
+          <div><small>Stress moyen</small><strong id="recoveryStress">—</strong></div>
+          <div><small>Body Battery</small><strong id="recoveryBodyBattery">—</strong></div>
+        </div>
+        <small id="recoveryDate" class="recovery-date">Les indicateurs apparaîtront après synchronisation Garmin.</small>
+        <p id="recoveryGuidance" class="recovery-guidance">Aucune évaluation possible sans données.</p>
+        <button id="recoverySync" class="quiet compact" type="button">Synchroniser Garmin</button>
       </article>
     </div>
 
