@@ -710,3 +710,18 @@ code {
 .library-item-actions button { font-size:12px; }
 .danger-text { color:var(--danger); }
 @media (max-width:600px) { .library-item { align-items:flex-start; flex-direction:column; } .library-item-actions { width:100%; justify-content:flex-start; } .top { align-items:flex-start; } .top-actions { flex-direction:column; align-items:flex-end; } }
+
+
+/* Budget calorique FORME */
+.calorie-panel { margin-bottom: 28px; }
+.calorie-budget-top { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+.calorie-budget-number { display:block; margin-top:5px; font-size:clamp(30px,6vw,42px); letter-spacing:-1.4px; }
+.calorie-remaining { text-align:right; }
+.calorie-remaining small, .energy-summary small { display:block; color:var(--muted); font-size:11px; }
+.calorie-remaining strong { display:block; margin-top:5px; color:var(--accent); font-size:clamp(22px,4.5vw,30px); }
+.calorie-progress-track { height:12px; margin:20px 0 8px; overflow:hidden; border-radius:99px; background:#0f1928; }
+.calorie-progress-fill { width:0; height:100%; border-radius:99px; background:var(--accent); transition:width .25s ease; }
+.calorie-progress-meta { display:flex; justify-content:space-between; gap:12px; color:var(--muted); font-size:11px; }
+.energy-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
+.energy-summary strong { display:block; margin:7px 0 4px; font-size:18px; }
+@media (max-width:560px) { .energy-summary { grid-template-columns:1fr; } .calorie-budget-top { align-items:flex-start; } }

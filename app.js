@@ -7,6 +7,9 @@ const SUPABASE_ANON_KEY = window.FORME_CONFIG?.SUPABASE_PUBLISHABLE_KEY;
 const TARGET_WEIGHT = 72;
 const TARGET_PROTEIN = 160;
 const CALORIE_TARGET = 2200;
+const DAILY_DEFICIT_TARGET = 450;
+let garminDailyCalories = null;
+let garminEnergyDate = null;
 
 let client = null;
 let currentUser = null;
@@ -276,7 +279,8 @@ async function loadDashboard() {
     loadWorkouts(),
     loadWithings(),
     loadProviderConnectionStatus("garmin"),
-    loadProviderConnectionStatus("hevy")
+    loadProviderConnectionStatus("hevy"),
+    loadGarminDailyEnergy()
   ]);
 
   setText("syncStatus", `Dernière actualisation : ${formatDate(new Date(), {
@@ -356,6 +360,82 @@ async function loadNutrition() {
 }
 
 /* =====================================================
+   BUDGET CALORIQUE ET DÉPENSE GARMIN
+===================================================== */
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+async function loadGarminDailyEnergy() {
+  if (!client || !currentUser) return;
+
+  const today = localDateKey();
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = localDateKey(yesterdayDate);
+
+  const { data, error } = await client
+    .from("daily_metrics")
+    .select("metric_date,total_calories_kcal,recorded_at")
+    .eq("user_id", currentUser.id)
+    .eq("source", "garmin")
+    .in("metric_date", [today, yesterday])
+    .order("metric_date", { ascending: false })
+    .limit(2);
+
+  if (error) {
+    console.warn("Dépense Garmin non accessible :", error.message);
+    garminDailyCalories = null;
+    garminEnergyDate = null;
+    renderCalorieBudget();
+    return;
+  }
+
+  const rows = data || [];
+  const selected = rows.find(row => row.metric_date === today && Number(row.total_calories_kcal) > 0) || null;
+
+  // Ne jamais réutiliser la dépense d'hier pour calculer le déficit d'aujourd'hui.
+  garminDailyCalories = selected ? Number(selected.total_calories_kcal) : null;
+  garminEnergyDate = selected?.metric_date || null;
+  renderCalorieBudget();
+}
+
+function renderCalorieBudget(consumedOverride) {
+  const consumed = consumedOverride ?? todayFoods.reduce(
+    (sum, item) => sum + Number(item.kcal || 0), 0
+  );
+  const remaining = CALORIE_TARGET - consumed;
+  const expenditureAvailable = Number.isFinite(garminDailyCalories) && garminDailyCalories > 0;
+  const estimatedDeficit = expenditureAvailable ? garminDailyCalories - consumed : null;
+
+  setText("dailyCalorieBudget", `${number(CALORIE_TARGET, 0)} kcal`);
+  setText("dailyCaloriesConsumed", `${number(consumed, 0)} kcal consommées`);
+  setText("dailyCaloriesRemaining", `${number(Math.max(0, remaining), 0)} kcal`);
+  setText("dailyCaloriesRemainingLabel", remaining >= 0 ? "Encore disponibles aujourd'hui" : "Budget dépassé");
+
+  const progress = Math.max(0, Math.min(100, consumed / CALORIE_TARGET * 100));
+  const bar = $("calorieBudgetProgress");
+  if (bar) bar.style.width = `${progress}%`;
+  const progressText = $("calorieBudgetProgressText");
+  if (progressText) progressText.textContent = `${number(progress, 0)} % du budget`;
+
+  setText("garminDailyExpenditure", expenditureAvailable
+    ? `${number(garminDailyCalories, 0)} kcal`
+    : "En attente des données Garmin");
+  setText("estimatedDailyDeficit", expenditureAvailable
+    ? `${estimatedDeficit >= 0 ? "−" : "+"}${number(Math.abs(estimatedDeficit), 0)} kcal ${estimatedDeficit >= 0 ? "de déficit estimé" : "de surplus estimé"}`
+    : "Disponible après synchronisation Garmin");
+  setText("deficitTargetNote", `Repère visé : environ ${number(DAILY_DEFICIT_TARGET, 0)} kcal de déficit moyen par jour`);
+  setText("garminEnergyDate", garminEnergyDate
+    ? `Dépense Garmin du ${formatDate(`${garminEnergyDate}T12:00:00`, { day: "numeric", month: "short" })}`
+    : "La dépense totale Garmin apparaîtra ici après synchronisation.");
+}
+
+/* =====================================================
    NUTRITION : AFFICHAGE ET HISTORIQUE
 ===================================================== */
 
@@ -382,8 +462,9 @@ function renderNutrition() {
 
   setText("caloriesValue", number(calories, 0));
   setText("proteinValue", `${number(protein)} g`);
-  setText("calorieTarget", `Objectif : ${CALORIE_TARGET} kcal`);
+  setText("calorieTarget", `Budget stable : ${number(CALORIE_TARGET, 0)} kcal`);
   setText("targetCaloriesValue", `${CALORIE_TARGET} kcal`);
+  renderCalorieBudget(calories);
 
   setText(
     "nutritionStatus",
@@ -444,6 +525,10 @@ function renderNutrition() {
     });
   });
 }
+
+/* =====================================================
+   NUTRITION : SAISIE MANUELLE
+===================================================== */
 
 /* =====================================================
    UNITÉS : LIBELLÉS ET BASE NUTRITIONNELLE
