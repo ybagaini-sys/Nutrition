@@ -131,6 +131,21 @@ async function init() {
   $("loginForm")?.addEventListener("submit", login);
   $("logoutButton")?.addEventListener("click", logout);
   $("refreshButton")?.addEventListener("click", () => loadDashboard(true));
+
+  const backToTopButton = $("backToTop");
+  const updateBackToTopVisibility = () => {
+    backToTopButton?.classList.toggle("hidden", window.scrollY < 350);
+  };
+  window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
+  backToTopButton?.addEventListener("click", () => {
+    window.scrollTo({
+      top: 0,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth"
+    });
+  });
+  updateBackToTopVisibility();
   $("weightForm")?.addEventListener("submit", saveManualWeight);
   $("foodForm")?.addEventListener("submit", saveFood);
   $("saveManualFoodToLibrary")?.addEventListener("click", saveManualFoodToLibrary);

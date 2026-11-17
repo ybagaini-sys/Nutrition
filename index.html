@@ -76,45 +76,6 @@
   </section>
 
   <section id="dashboard" class="hidden">
-    <div class="welcome">
-      <div>
-        <p class="eyebrow" id="todayLabel">TON ESPACE</p>
-        <h1>Vue d'ensemble</h1>
-        <p id="userLabel" class="muted"></p>
-      </div>
-      <div class="refresh-control">
-        <button id="refreshButton" class="quiet" type="button">Actualiser</button>
-        <small id="refreshStatus" class="refresh-status" role="status" aria-live="polite">En attente de la première actualisation</small>
-      </div>
-    </div>
-
-    <div class="grid">
-      <article class="tile">
-        <span class="tile-icon">⚖️</span>
-        <p class="tile-label">Dernier poids Withings</p>
-        <strong class="metric" id="weightValue">—</strong>
-        <small id="weightDate">Aucune mesure Withings</small>
-      </article>
-      <article class="tile">
-        <span class="tile-icon">🔥</span>
-        <p class="tile-label">Calories consommées</p>
-        <strong class="metric" id="caloriesValue">0</strong>
-        <small id="calorieTarget">Budget stable : 2 200 kcal</small>
-      </article>
-      <article class="tile">
-        <span class="tile-icon">🥚</span>
-        <p class="tile-label">Protéines aujourd'hui</p>
-        <strong class="metric" id="proteinValue">0 g</strong>
-        <small id="proteinTarget">Objectif : 160 g</small>
-      </article>
-      <article class="tile">
-        <span class="tile-icon">🏋️</span>
-        <p class="tile-label">Séances cette semaine</p>
-        <strong class="metric" id="workoutsValue">0</strong>
-        <small>Hevy et saisies manuelles</small>
-      </article>
-    </div>
-
     <div class="section-title">
       <div>
         <p class="eyebrow">PILOTAGE ÉNERGÉTIQUE</p>
@@ -155,6 +116,45 @@
       </div>
       <p class="footnote">Le budget reste fixé à 2 200 kcal, même les jours d'entraînement. Garmin sert à estimer le déficit réel, sans ajouter une seconde fois les calories actives. Les estimations de la journée restent provisoires jusqu'à sa fin.</p>
     </article>
+
+    <div class="welcome">
+      <div>
+        <p class="eyebrow" id="todayLabel">TON ESPACE</p>
+        <h1>Vue d'ensemble</h1>
+        <p id="userLabel" class="muted"></p>
+      </div>
+      <div class="refresh-control">
+        <button id="refreshButton" class="quiet" type="button">Actualiser</button>
+        <small id="refreshStatus" class="refresh-status" role="status" aria-live="polite">En attente de la première actualisation</small>
+      </div>
+    </div>
+
+    <div class="grid">
+      <article class="tile">
+        <span class="tile-icon">⚖️</span>
+        <p class="tile-label">Dernier poids Withings</p>
+        <strong class="metric" id="weightValue">—</strong>
+        <small id="weightDate">Aucune mesure Withings</small>
+      </article>
+      <article class="tile">
+        <span class="tile-icon">🔥</span>
+        <p class="tile-label">Calories consommées</p>
+        <strong class="metric" id="caloriesValue">0</strong>
+        <small id="calorieTarget">Budget stable : 2 200 kcal</small>
+      </article>
+      <article class="tile">
+        <span class="tile-icon">🥚</span>
+        <p class="tile-label">Protéines aujourd'hui</p>
+        <strong class="metric" id="proteinValue">0 g</strong>
+        <small id="proteinTarget">Objectif : 160 g</small>
+      </article>
+      <article class="tile">
+        <span class="tile-icon">🏋️</span>
+        <p class="tile-label">Séances cette semaine</p>
+        <strong class="metric" id="workoutsValue">0</strong>
+        <small>Hevy et saisies manuelles</small>
+      </article>
+    </div>
 
     <div class="section-title">
       <div>
@@ -488,6 +488,11 @@
 
   <footer>FORME V2 · Tableau de bord personnel</footer>
 </main>
+
+<button id="backToTop" class="back-to-top hidden" type="button"
+  aria-label="Retour en haut" title="Retour en haut">
+  <span aria-hidden="true">↑</span>
+</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
