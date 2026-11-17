@@ -25,6 +25,7 @@ let scannedProductData = null;
 let scannerBusy = false;
 let scanDetected = false;
 let dashboardRefreshInProgress = false;
+let lastForegroundRefreshAt = 0;
 
 /* =====================================================
    OUTILS GÉNÉRAUX
@@ -130,7 +131,19 @@ async function init() {
 
   $("loginForm")?.addEventListener("submit", login);
   $("logoutButton")?.addEventListener("click", logout);
-  $("refreshButton")?.addEventListener("click", () => loadDashboard(true));
+  $("refreshButton")?.addEventListener("click", () => loadDashboard(true, true));
+
+  // Sur iOS/PWA, une reprise au premier plan doit relancer les données.
+  // Le délai évite le double déclenchement pageshow + visibilitychange.
+  const refreshOnForeground = () => {
+    if (document.visibilityState === "hidden" || !currentUser) return;
+    const now = Date.now();
+    if (now - lastForegroundRefreshAt < 30000) return;
+    lastForegroundRefreshAt = now;
+    loadDashboard(false, true);
+  };
+  document.addEventListener("visibilitychange", refreshOnForeground);
+  window.addEventListener("pageshow", refreshOnForeground);
 
   const backToTopButton = $("backToTop");
   const updateBackToTopVisibility = () => {
@@ -214,17 +227,17 @@ async function init() {
 
   if (data.session) {
     currentUser = data.session.user;
-    await loadDashboard();
+    await loadDashboard(false, true);
   } else {
     showDashboard(false);
     setConnection(false, "Non connecté");
   }
 
-  client.auth.onAuthStateChange(async (_event, session) => {
+  client.auth.onAuthStateChange(async (event, session) => {
     currentUser = session?.user || null;
 
-    if (currentUser) {
-      await loadDashboard();
+    if (currentUser && event === "SIGNED_IN") {
+      await loadDashboard(false, true);
     } else {
       await stopScanner();
       showDashboard(false);
@@ -258,7 +271,7 @@ async function login(event) {
   currentUser = data.user;
   showMessage("authMessage", "Connexion réussie.");
 
-  await loadDashboard();
+  await loadDashboard(false, true);
 }
 
 async function logout() {
@@ -276,7 +289,7 @@ async function logout() {
    TABLEAU DE BORD
 ===================================================== */
 
-async function loadDashboard(manual = false) {
+async function loadDashboard(manual = false, syncGarminFirst = false) {
   if (!currentUser || !client || dashboardRefreshInProgress) return;
 
   dashboardRefreshInProgress = true;
@@ -315,7 +328,30 @@ async function loadDashboard(manual = false) {
     ["Récupération Garmin", loadRecoveryMetrics]
   ];
 
+  let garminSyncFailed = false;
+
   try {
+    // Garmin est synchronisé avant la lecture des indicateurs afin que
+    // dépense énergétique et récupération utilisent les données les plus récentes.
+    if (syncGarminFirst) {
+      try {
+        const { data: connection, error: connectionError } = await client
+          .from("provider_connections")
+          .select("connection_status")
+          .eq("user_id", currentUser.id)
+          .eq("provider", "garmin")
+          .maybeSingle();
+
+        if (connectionError) throw connectionError;
+        if (connection?.connection_status === "connected") {
+          await runProviderSync("garmin");
+        }
+      } catch (error) {
+        garminSyncFailed = true;
+        console.warn("Synchronisation automatique Garmin impossible :", error);
+      }
+    }
+
     const results = await Promise.allSettled(tasks.map(([, task]) => task()));
     const successful = results.filter(result =>
       result.status === "fulfilled" && result.value !== false
@@ -336,15 +372,15 @@ async function loadDashboard(manual = false) {
       }
     });
 
-    if (successful === total) {
+    if (successful === total && !garminSyncFailed) {
       if (refreshStatus) {
         refreshStatus.classList.add("success");
-        refreshStatus.textContent = `OK · ${timeLabel}`;
+        refreshStatus.textContent = `OK · ${timeLabel}${garminSyncFailed ? " · Garmin non actualisé" : ""}`;
       }
     } else if (successful > 0) {
       if (refreshStatus) {
         refreshStatus.classList.add("partial");
-        refreshStatus.textContent = `Partiel (${successful}/${total}) · ${timeLabel}`;
+        refreshStatus.textContent = `Partiel (${successful}/${total}) · ${timeLabel}${garminSyncFailed ? " · Garmin non actualisé" : ""}`;
       }
     } else {
       if (refreshStatus) {
