@@ -6,7 +6,6 @@ const SUPABASE_ANON_KEY = window.FORME_CONFIG?.SUPABASE_PUBLISHABLE_KEY;
 
 const TARGET_WEIGHT = 72;
 const TARGET_PROTEIN = 160;
-const CALORIE_TARGET = 2200;
 const DAILY_DEFICIT_TARGET = 450;
 let garminDailyCalories = null;
 let garminEnergyDate = null;
@@ -445,7 +444,7 @@ async function loadProfile() {
   setText("targetValue", `${TARGET_WEIGHT} kg`);
   setText("weightGoal", `${TARGET_WEIGHT} kg`);
   setText("proteinTarget", `Objectif : ${TARGET_PROTEIN} g`);
-  setText("targetCaloriesValue", `${CALORIE_TARGET} kcal`);
+  setText("targetCaloriesValue", Number.isFinite(garminDailyCalories) && garminDailyCalories > 0 ? `${number(Math.max(0, garminDailyCalories - DAILY_DEFICIT_TARGET), 0)} kcal` : "En attente Garmin");
   return true;
 }
 
@@ -529,20 +528,37 @@ function renderCalorieBudget(consumedOverride) {
   const consumed = consumedOverride ?? todayFoods.reduce(
     (sum, item) => sum + Number(item.kcal || 0), 0
   );
-  const remaining = CALORIE_TARGET - consumed;
   const expenditureAvailable = Number.isFinite(garminDailyCalories) && garminDailyCalories > 0;
+  const calculatedBudget = expenditureAvailable
+    ? Math.max(0, garminDailyCalories - DAILY_DEFICIT_TARGET)
+    : null;
+  const remaining = calculatedBudget === null ? null : calculatedBudget - consumed;
   const estimatedDeficit = expenditureAvailable ? garminDailyCalories - consumed : null;
 
-  setText("dailyCalorieBudget", `${number(CALORIE_TARGET, 0)} kcal`);
+  setText("dailyCalorieBudget", calculatedBudget === null
+    ? "En attente Garmin"
+    : `${number(calculatedBudget, 0)} kcal`);
   setText("dailyCaloriesConsumed", `${number(consumed, 0)} kcal consommées`);
-  setText("dailyCaloriesRemaining", `${number(Math.max(0, remaining), 0)} kcal`);
-  setText("dailyCaloriesRemainingLabel", remaining >= 0 ? "Encore disponibles aujourd'hui" : "Budget dépassé");
+  setText("dailyCaloriesRemaining", remaining === null
+    ? "—"
+    : remaining >= 0
+      ? `${number(remaining, 0)} kcal`
+      : `${number(Math.abs(remaining), 0)} kcal au-dessus`);
+  setText("dailyCaloriesRemainingLabel", remaining === null
+    ? "Budget calculé après synchronisation"
+    : remaining >= 0
+      ? "Encore disponibles aujourd'hui"
+      : "Budget dépassé");
 
-  const progress = Math.max(0, Math.min(100, consumed / CALORIE_TARGET * 100));
+  const progress = calculatedBudget > 0
+    ? Math.max(0, Math.min(100, consumed / calculatedBudget * 100))
+    : 0;
   const bar = $("calorieBudgetProgress");
   if (bar) bar.style.width = `${progress}%`;
   const progressText = $("calorieBudgetProgressText");
-  if (progressText) progressText.textContent = `${number(progress, 0)} % du budget`;
+  if (progressText) progressText.textContent = calculatedBudget === null
+    ? "En attente des données Garmin"
+    : `${number(progress, 0)} % du budget`;
 
   setText("garminDailyExpenditure", expenditureAvailable
     ? `${number(garminDailyCalories, 0)} kcal`
@@ -550,10 +566,16 @@ function renderCalorieBudget(consumedOverride) {
   setText("estimatedDailyDeficit", expenditureAvailable
     ? `${estimatedDeficit >= 0 ? "−" : "+"}${number(Math.abs(estimatedDeficit), 0)} kcal ${estimatedDeficit >= 0 ? "de déficit estimé" : "de surplus estimé"}`
     : "Disponible après synchronisation Garmin");
-  setText("deficitTargetNote", `Repère visé : environ ${number(DAILY_DEFICIT_TARGET, 0)} kcal de déficit moyen par jour`);
+  setText("deficitTargetNote", `Budget = dépense Garmin − ${number(DAILY_DEFICIT_TARGET, 0)} kcal. Estimation évolutive pendant la journée.`);
   setText("garminEnergyDate", garminEnergyDate
     ? `Dépense Garmin du ${formatDate(`${garminEnergyDate}T12:00:00`, { day: "numeric", month: "short" })}`
     : "La dépense totale Garmin apparaîtra ici après synchronisation.");
+  setText("calorieTarget", calculatedBudget === null
+    ? "Budget dynamique : en attente Garmin"
+    : `Budget dynamique : ${number(calculatedBudget, 0)} kcal`);
+  setText("targetCaloriesValue", calculatedBudget === null
+    ? "En attente Garmin"
+    : `${number(calculatedBudget, 0)} kcal`);
 }
 
 /* =====================================================
@@ -642,8 +664,7 @@ function renderNutrition() {
 
   setText("caloriesValue", number(calories, 0));
   setText("proteinValue", `${number(protein)} g`);
-  setText("calorieTarget", `Budget stable : ${number(CALORIE_TARGET, 0)} kcal`);
-  setText("targetCaloriesValue", `${CALORIE_TARGET} kcal`);
+  setText("targetCaloriesValue", Number.isFinite(garminDailyCalories) && garminDailyCalories > 0 ? `${number(Math.max(0, garminDailyCalories - DAILY_DEFICIT_TARGET), 0)} kcal` : "En attente Garmin");
   renderCalorieBudget(calories);
 
   setText(
@@ -775,6 +796,18 @@ async function saveFood(event) {
   const unit = $("foodQuantityUnit").value;
   const basis = $("foodNutritionBasis").value;
   const pieceWeight = Number($("foodPieceWeight").value || 0);
+  const requiredNutrition = ["foodKcal", "foodProtein"];
+  if (requiredNutrition.some(id => $(id).value.trim() === "" || !Number.isFinite(Number($(id).value)) || Number($(id).value) < 0)) {
+    showMessage("foodMessage", "Renseigne au minimum les calories et les protéines avec des valeurs valides.", true);
+    button.disabled = false;
+    return;
+  }
+  const optionalNutrition = ["foodCarbs", "foodFat"];
+  if (optionalNutrition.some(id => $(id).value.trim() !== "" && (!Number.isFinite(Number($(id).value)) || Number($(id).value) < 0))) {
+    showMessage("foodMessage", "Les glucides et lipides doivent être des valeurs positives ou nulles.", true);
+    button.disabled = false;
+    return;
+  }
   if (unit === "piece" && pieceWeight <= 0) { showMessage("foodMessage", "Indique le poids d’une pièce pour calculer les valeurs nutritionnelles.", true); button.disabled = false; return; }
   if (unit === "ml" && basis !== "ml") { showMessage("foodMessage", "Pour un liquide, renseigne les valeurs pour 100 ml.", true); button.disabled = false; return; }
   if (unit !== "ml" && basis !== "g") { showMessage("foodMessage", "Pour cet aliment, renseigne les valeurs pour 100 g.", true); button.disabled = false; return; }
@@ -1700,6 +1733,10 @@ async function addLibraryProductToJournal(id) {
   if (!product) return;
   const unit = product.serving_basis_unit || "g";
   const basis = product.nutrition_basis_unit || "g";
+  if ((unit === "ml" && basis !== "ml") || (unit !== "ml" && basis !== "g")) {
+    alert("Les unités enregistrées pour cet aliment ne sont pas cohérentes. Modifie-le dans la bibliothèque avant de l'ajouter.");
+    return;
+  }
   const suggested = product.serving_basis_value || product.serving_basis_g || (unit === "ml" ? 250 : 100);
   const raw = prompt(`Quantité consommée de « ${product.name} » en ${unit === "piece" ? "pièce(s)" : unit} :`, String(suggested));
   if (raw === null) return;

@@ -81,18 +81,18 @@
         <p class="eyebrow">PILOTAGE ÉNERGÉTIQUE</p>
         <h2>Mon budget du jour</h2>
       </div>
-      <span class="badge">Objectif stable</span>
+      <span class="badge">Budget dynamique Garmin</span>
     </div>
 
     <article class="panel calorie-panel">
       <div class="calorie-budget-top">
         <div>
           <small class="muted">Budget alimentaire quotidien</small>
-          <strong id="dailyCalorieBudget" class="calorie-budget-number">2 200 kcal</strong>
+          <strong id="dailyCalorieBudget" class="calorie-budget-number">En attente Garmin</strong>
         </div>
         <div class="calorie-remaining">
-          <small id="dailyCaloriesRemainingLabel">Encore disponibles aujourd'hui</small>
-          <strong id="dailyCaloriesRemaining">2 200 kcal</strong>
+          <small id="dailyCaloriesRemainingLabel">Budget calculé après synchronisation</small>
+          <strong id="dailyCaloriesRemaining">En attente Garmin</strong>
         </div>
       </div>
       <div class="calorie-progress-track">
@@ -100,7 +100,7 @@
       </div>
       <div class="calorie-progress-meta">
         <span id="dailyCaloriesConsumed">0 kcal consommées</span>
-        <span id="calorieBudgetProgressText">0 % du budget</span>
+        <span id="calorieBudgetProgressText">En attente des données Garmin</span>
       </div>
       <div class="energy-summary">
         <div>
@@ -111,10 +111,10 @@
         <div>
           <small>Déficit énergétique estimé</small>
           <strong id="estimatedDailyDeficit">Disponible après synchronisation Garmin</strong>
-          <span id="deficitTargetNote" class="muted tiny">Repère visé : environ 450 kcal de déficit moyen par jour</span>
+          <span id="deficitTargetNote" class="muted tiny">Budget = dépense Garmin − 450 kcal</span>
         </div>
       </div>
-      <p class="footnote">Le budget reste fixé à 2 200 kcal, même les jours d'entraînement. Garmin sert à estimer le déficit réel, sans ajouter une seconde fois les calories actives. Les estimations de la journée restent provisoires jusqu'à sa fin.</p>
+      <p class="footnote">Le budget du jour est calculé à partir de la dépense totale Garmin moins 450 kcal. Il évolue avec les synchronisations Garmin et reste provisoire pendant la journée. Le déficit estimé correspond à la dépense Garmin moins les calories consommées enregistrées.</p>
     </article>
 
     <div class="welcome">
@@ -140,7 +140,7 @@
         <span class="tile-icon">🔥</span>
         <p class="tile-label">Calories consommées</p>
         <strong class="metric" id="caloriesValue">0</strong>
-        <small id="calorieTarget">Budget stable : 2 200 kcal</small>
+        <small id="calorieTarget">Budget dynamique : en attente Garmin</small>
       </article>
       <article class="tile">
         <span class="tile-icon">🥚</span>

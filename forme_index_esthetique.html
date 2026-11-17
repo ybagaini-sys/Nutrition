@@ -58,7 +58,7 @@
 
     <div class="grid">
       <article class="tile"><span class="tile-icon">⚖️</span><p class="tile-label">Dernier poids Withings</p><strong class="metric" id="weightValue">—</strong><small id="weightDate">Aucune mesure Withings</small></article>
-      <article class="tile"><span class="tile-icon">🔥</span><p class="tile-label">Calories consommées</p><strong class="metric" id="caloriesValue">0</strong><small id="calorieTarget">Budget stable : 2 200 kcal</small></article>
+      <article class="tile"><span class="tile-icon">🔥</span><p class="tile-label">Calories consommées</p><strong class="metric" id="caloriesValue">0</strong><small id="calorieTarget">Budget dynamique : en attente Garmin</small></article>
       <article class="tile"><span class="tile-icon">🥚</span><p class="tile-label">Protéines aujourd'hui</p><strong class="metric" id="proteinValue">0 g</strong><small id="proteinTarget">Objectif : 160 g</small></article>
       <article class="tile"><span class="tile-icon">🏋️</span><p class="tile-label">Séances cette semaine</p><strong class="metric" id="workoutsValue">0</strong><small>Hevy et saisies manuelles</small></article>
     </div>
@@ -66,8 +66,8 @@
     <div class="section-title"><div><p class="eyebrow">PILOTAGE ÉNERGÉTIQUE</p><h2>Mon budget du jour</h2></div><span class="badge">Objectif stable</span></div>
     <article class="panel calorie-panel">
       <div class="calorie-budget-top">
-        <div><small class="muted">Budget alimentaire quotidien</small><strong id="dailyCalorieBudget" class="calorie-budget-number">2 200 kcal</strong></div>
-        <div class="calorie-remaining"><small id="dailyCaloriesRemainingLabel">Encore disponibles aujourd'hui</small><strong id="dailyCaloriesRemaining">2 200 kcal</strong></div>
+        <div><small class="muted">Budget alimentaire quotidien</small><strong id="dailyCalorieBudget" class="calorie-budget-number">En attente Garmin</strong></div>
+        <div class="calorie-remaining"><small id="dailyCaloriesRemainingLabel">Encore disponibles aujourd'hui</small><strong id="dailyCaloriesRemaining">En attente Garmin</strong></div>
       </div>
       <div class="calorie-progress-track"><div id="calorieBudgetProgress" class="calorie-progress-fill"></div></div>
       <div class="calorie-progress-meta"><span id="dailyCaloriesConsumed">0 kcal consommées</span><span id="calorieBudgetProgressText">0 % du budget</span></div>
@@ -75,7 +75,7 @@
         <div><small>Dépense totale Garmin</small><strong id="garminDailyExpenditure">En attente des données Garmin</strong><span id="garminEnergyDate" class="muted tiny">La dépense totale Garmin apparaîtra ici après synchronisation.</span></div>
         <div><small>Déficit énergétique estimé</small><strong id="estimatedDailyDeficit">Disponible après synchronisation Garmin</strong><span id="deficitTargetNote" class="muted tiny">Repère visé : environ 450 kcal de déficit moyen par jour</span></div>
       </div>
-      <p class="footnote">Le budget reste fixé à 2 200 kcal, même les jours d'entraînement. Garmin sert à estimer le déficit réel, sans ajouter une seconde fois les calories actives. Les estimations de la journée restent provisoires jusqu'à sa fin.</p>
+      <p class="footnote">Le budget du jour est calculé à partir de la dépense totale Garmin moins 450 kcal. Il évolue avec les synchronisations Garmin et reste provisoire pendant la journée.</p>
     </article>
 
     <div class="section-title"><div><p class="eyebrow">DONNÉES WITHINGS</p><h2>Composition corporelle</h2></div><span class="badge" id="compositionDate">En attente</span></div>
