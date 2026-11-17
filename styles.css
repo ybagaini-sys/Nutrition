@@ -840,3 +840,15 @@ code {
   .panel, .tile, .section-title, .energy-summary > div { min-width: 0; }
   h1, h2, h3, p, strong, small, span { overflow-wrap: anywhere; }
 }
+
+/* Tableau de bord calorique épuré : trois indicateurs, sans sous-cartes. */
+.calorie-panel { display:flex; flex-direction:column; gap:16px; }
+.calorie-metric { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.calorie-metric small { color:var(--muted); font-size:13px; }
+.calorie-budget-number { display:block; font-size:clamp(34px,7vw,46px); line-height:1.12; letter-spacing:-1.2px; }
+.calorie-secondary-number { display:block; font-size:clamp(25px,5vw,32px); line-height:1.15; }
+.calorie-remaining-number { display:block; color:var(--accent); font-size:clamp(28px,5.5vw,38px); line-height:1.15; }
+.calorie-balance { margin-top:2px; }
+.calorie-panel .calorie-progress-track { margin:2px 0 0; }
+.calorie-panel .calorie-progress-meta { justify-content:flex-end; }
+.calorie-note { margin:0; color:var(--muted); font-size:11px; line-height:1.5; }

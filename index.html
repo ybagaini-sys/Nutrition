@@ -85,36 +85,25 @@
     </div>
 
     <article class="panel calorie-panel">
-      <div class="calorie-budget-top">
-        <div>
-          <small class="muted">Budget alimentaire quotidien</small>
-          <strong id="dailyCalorieBudget" class="calorie-budget-number">En attente Garmin</strong>
-        </div>
-        <div class="calorie-remaining">
-          <small id="dailyCaloriesRemainingLabel">Budget calculé après synchronisation</small>
-          <strong id="dailyCaloriesRemaining">En attente Garmin</strong>
-        </div>
+      <div class="calorie-metric">
+        <small class="muted">Budget journalier autorisé</small>
+        <strong id="dailyCalorieBudget" class="calorie-budget-number">En attente Garmin</strong>
+      </div>
+      <div class="calorie-metric">
+        <small class="muted">Total des aliments consommés</small>
+        <strong id="dailyCaloriesConsumed" class="calorie-secondary-number">0 kcal</strong>
+      </div>
+      <div class="calorie-metric calorie-balance">
+        <small class="muted">Calories restantes</small>
+        <strong id="dailyCaloriesRemaining" class="calorie-remaining-number">En attente Garmin</strong>
       </div>
       <div class="calorie-progress-track">
         <div id="calorieBudgetProgress" class="calorie-progress-fill"></div>
       </div>
       <div class="calorie-progress-meta">
-        <span id="dailyCaloriesConsumed">0 kcal consommées</span>
         <span id="calorieBudgetProgressText">En attente des données Garmin</span>
       </div>
-      <div class="energy-summary">
-        <div>
-          <small>Dépense journalière estimée</small>
-          <strong id="garminDailyExpenditure">En attente des données Garmin</strong>
-          <span id="garminEnergyDate" class="muted tiny">La dépense totale Garmin apparaîtra ici après synchronisation.</span>
-        </div>
-        <div>
-          <small>Déficit énergétique estimé</small>
-          <strong id="estimatedDailyDeficit">Disponible après synchronisation Garmin</strong>
-          <span id="deficitTargetNote" class="muted tiny">Budget = dépense Garmin − 450 kcal</span>
-        </div>
-      </div>
-      <p class="footnote">Le budget quotidien correspond à la dépense journalière estimée moins 450 kcal. Il est calculé sur une journée complète, en tenant compte de l’historique Garmin et de la tendance du jour. Le déficit estimé reste indicatif pendant la journée.</p>
+      <p class="calorie-note">Budget calculé selon ta dépense énergétique quotidienne, activités sportives comprises.</p>
     </article>
 
     <div class="welcome">

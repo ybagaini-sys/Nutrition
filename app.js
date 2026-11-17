@@ -577,24 +577,19 @@ function renderCalorieBudget(consumedOverride) {
   setText("dailyCalorieBudget", calculatedBudget === null
     ? "En attente Garmin"
     : `${number(calculatedBudget, 0)} kcal`);
-  setText("dailyCaloriesConsumed", `${number(consumed, 0)} kcal consommées`);
+  setText("dailyCaloriesConsumed", `${number(consumed, 0)} kcal`);
   setText("dailyCaloriesRemaining", remaining === null
-    ? "—"
+    ? "En attente Garmin"
     : remaining >= 0
       ? `${number(remaining, 0)} kcal`
-      : `${number(Math.abs(remaining), 0)} kcal au-dessus`);
-  setText("dailyCaloriesRemainingLabel", remaining === null
-    ? "Budget calculé après synchronisation"
-    : remaining >= 0
-      ? "Encore disponibles aujourd'hui"
-      : "Budget dépassé");
+      : `${number(Math.abs(remaining), 0)} kcal au-dessus du budget`);
 
   const bar = $("calorieBudgetProgress");
   if (bar) bar.style.width = `${Math.max(0, Math.min(100, consumedPercent))}%`;
   const progressText = $("calorieBudgetProgressText");
   if (progressText) progressText.textContent = calculatedBudget === null
     ? "En attente des données Garmin"
-    : `${number(consumedPercent, 0)} % du budget`;
+    : `${number(consumedPercent, 0)} % du budget consommé`;
 
   setText("garminDailyExpenditure", expenditureAvailable
     ? `${number(garminProjectedDailyCalories, 0)} kcal estimées sur 24 h`
