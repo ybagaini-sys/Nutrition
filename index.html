@@ -82,7 +82,10 @@
         <h1>Vue d'ensemble</h1>
         <p id="userLabel" class="muted"></p>
       </div>
-      <button id="refreshButton" class="quiet" type="button">Actualiser</button>
+      <div class="refresh-control">
+        <button id="refreshButton" class="quiet" type="button">Actualiser</button>
+        <small id="refreshStatus" class="refresh-status" role="status" aria-live="polite">En attente de la première actualisation</small>
+      </div>
     </div>
 
     <div class="grid">
@@ -477,7 +480,6 @@
         </div>
       </div>
       <p class="footnote">Les données Garmin, Hevy et Withings sont synchronisées dans ton espace Supabase personnel.</p>
-      <p id="syncStatus" class="muted tiny"></p>
     </article>
   </section>
 

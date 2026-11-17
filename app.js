@@ -24,6 +24,7 @@ let scannerControls = null;
 let scannedProductData = null;
 let scannerBusy = false;
 let scanDetected = false;
+let dashboardRefreshInProgress = false;
 
 /* =====================================================
    OUTILS GÉNÉRAUX
@@ -129,7 +130,7 @@ async function init() {
 
   $("loginForm")?.addEventListener("submit", login);
   $("logoutButton")?.addEventListener("click", logout);
-  $("refreshButton")?.addEventListener("click", loadDashboard);
+  $("refreshButton")?.addEventListener("click", () => loadDashboard(true));
   $("weightForm")?.addEventListener("submit", saveManualWeight);
   $("foodForm")?.addEventListener("submit", saveFood);
   $("foodQuantityUnit")?.addEventListener("change", updateFoodUnitLabels);
@@ -258,35 +259,99 @@ async function logout() {
    TABLEAU DE BORD
 ===================================================== */
 
-async function loadDashboard() {
-  if (!currentUser || !client) return;
+async function loadDashboard(manual = false) {
+  if (!currentUser || !client || dashboardRefreshInProgress) return;
+
+  dashboardRefreshInProgress = true;
+  const refreshButton = $("refreshButton");
+  const refreshStatus = $("refreshStatus");
+  const originalButtonLabel = refreshButton?.textContent || "Actualiser";
+
+  if (refreshButton) {
+    refreshButton.disabled = true;
+    if (manual) refreshButton.textContent = "Actualisation…";
+  }
+  if (refreshStatus) {
+    refreshStatus.classList.remove("success", "partial", "error");
+    refreshStatus.textContent = "Chargement des données…";
+  }
 
   showDashboard(true);
   setConnection(true, "Connecté");
 
   setText("userLabel", currentUser.email || "Espace personnel");
-
   setText("todayLabel", formatDate(new Date(), {
     weekday: "long",
     day: "numeric",
     month: "long"
   }).toUpperCase());
 
-  await Promise.all([
-    loadProfile(),
-    loadNutrition(),
-    loadFoodLibrary(),
-    loadWorkouts(),
-    loadWithings(),
-    loadProviderConnectionStatus("garmin"),
-    loadProviderConnectionStatus("hevy"),
-    loadGarminDailyEnergy()
-  ]);
+  const tasks = [
+    ["Profil", loadProfile],
+    ["Nutrition", loadNutrition],
+    ["Bibliothèque", loadFoodLibrary],
+    ["Séances", loadWorkouts],
+    ["Withings", loadWithings],
+    ["Statut Garmin", () => loadProviderConnectionStatus("garmin")],
+    ["Statut Hevy", () => loadProviderConnectionStatus("hevy")],
+    ["Dépense Garmin", loadGarminDailyEnergy]
+  ];
 
-  setText("syncStatus", `Dernière actualisation : ${formatDate(new Date(), {
-    hour: "2-digit",
-    minute: "2-digit"
-  })}`);
+  try {
+    const results = await Promise.allSettled(tasks.map(([, task]) => task()));
+    const successful = results.filter(result =>
+      result.status === "fulfilled" && result.value !== false
+    ).length;
+    const total = tasks.length;
+    const now = new Date();
+    const timeLabel = formatDate(now, {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`Actualisation ${tasks[index][0]} :`, result.reason);
+      }
+    });
+
+    if (successful === total) {
+      if (refreshStatus) {
+        refreshStatus.classList.add("success");
+        refreshStatus.textContent = `OK · ${timeLabel}`;
+      }
+    } else if (successful > 0) {
+      if (refreshStatus) {
+        refreshStatus.classList.add("partial");
+        refreshStatus.textContent = `Partiel (${successful}/${total}) · ${timeLabel}`;
+      }
+    } else {
+      if (refreshStatus) {
+        refreshStatus.classList.add("error");
+        refreshStatus.textContent = `Échec de l'actualisation · ${timeLabel}`;
+      }
+    }
+  } catch (error) {
+    console.error("Erreur générale d'actualisation :", error);
+    const timeLabel = formatDate(new Date(), {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit"
+    });
+    if (refreshStatus) {
+      refreshStatus.classList.remove("success", "partial");
+      refreshStatus.classList.add("error");
+      refreshStatus.textContent = `Échec de l'actualisation · ${timeLabel}`;
+    }
+  } finally {
+    dashboardRefreshInProgress = false;
+    if (refreshButton) {
+      refreshButton.disabled = false;
+      refreshButton.textContent = originalButtonLabel;
+    }
+  }
 }
 
 /* =====================================================
@@ -302,7 +367,7 @@ async function loadProfile() {
 
   if (error) {
     console.error("Erreur profil", error);
-    return;
+    return false;
   }
 
   currentProfile = data || {};
@@ -327,6 +392,7 @@ async function loadProfile() {
   setText("weightGoal", `${TARGET_WEIGHT} kg`);
   setText("proteinTarget", `Objectif : ${TARGET_PROTEIN} g`);
   setText("targetCaloriesValue", `${CALORIE_TARGET} kcal`);
+  return true;
 }
 
 /* =====================================================
@@ -371,7 +437,7 @@ function localDateKey(date = new Date()) {
 }
 
 async function loadGarminDailyEnergy() {
-  if (!client || !currentUser) return;
+  if (!client || !currentUser) return false;
 
   const today = localDateKey();
   const yesterdayDate = new Date();
@@ -392,7 +458,7 @@ async function loadGarminDailyEnergy() {
     garminDailyCalories = null;
     garminEnergyDate = null;
     renderCalorieBudget();
-    return;
+    return false;
   }
 
   const rows = data || [];
@@ -402,6 +468,7 @@ async function loadGarminDailyEnergy() {
   garminDailyCalories = selected ? Number(selected.total_calories_kcal) : null;
   garminEnergyDate = selected?.metric_date || null;
   renderCalorieBudget();
+  return true;
 }
 
 function renderCalorieBudget(consumedOverride) {
@@ -680,10 +747,11 @@ async function loadWorkouts() {
   if (error) {
     console.error("Erreur séances", error);
     setText("workoutsValue", "—");
-    return;
+    return false;
   }
 
   setText("workoutsValue", String(count || 0));
+  return true;
 }
 
 /* =====================================================
@@ -707,13 +775,14 @@ async function loadWithings() {
     setText("compositionDate", "Erreur");
     setText("weightDate", "Impossible de charger les données Withings");
 
-    return;
+    return false;
   }
 
   withingsRows = data || [];
 
   renderLatestWithings();
   renderCharts();
+  return true;
 }
 
 /* =====================================================
@@ -1690,7 +1759,7 @@ async function runProviderSync(provider) {
 }
 
 async function loadProviderConnectionStatus(provider) {
-  if (!client || !currentUser) return;
+  if (!client || !currentUser) return false;
 
   const statusId = provider === "garmin" ? "garminStatus" : "hevyStatus";
   const { data, error } = await client
@@ -1702,7 +1771,7 @@ async function loadProviderConnectionStatus(provider) {
 
   if (error) {
     console.warn(`Statut ${provider} indisponible :`, error.message);
-    return;
+    return false;
   }
 
   const status = data?.connection_status === "connected"
@@ -1712,6 +1781,7 @@ async function loadProviderConnectionStatus(provider) {
       : "Configuration en attente";
 
   setText(statusId, status);
+  return true;
 }
 
 async function syncGarmin() {
