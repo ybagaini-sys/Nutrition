@@ -328,28 +328,31 @@ async function loadDashboard(manual = false, syncGarminFirst = false) {
     ["Récupération Garmin", loadRecoveryMetrics]
   ];
 
-  let garminSyncFailed = false;
+  const syncFailures = [];
 
   try {
-    // Garmin est synchronisé avant la lecture des indicateurs afin que
-    // dépense énergétique et récupération utilisent les données les plus récentes.
+    // À chaque ouverture/reprise ou actualisation manuelle, synchroniser les
+    // deux fournisseurs connectés AVANT de relire les données du tableau de bord.
     if (syncGarminFirst) {
-      try {
-        const { data: connection, error: connectionError } = await client
+      const providers = ["garmin", "hevy"];
+      const syncResults = await Promise.allSettled(providers.map(async provider => {
+        const { data: connection, error } = await client
           .from("provider_connections")
           .select("connection_status")
           .eq("user_id", currentUser.id)
-          .eq("provider", "garmin")
+          .eq("provider", provider)
           .maybeSingle();
-
-        if (connectionError) throw connectionError;
-        if (connection?.connection_status === "connected") {
-          await runProviderSync("garmin");
+        if (error) throw new Error(`Lecture du statut ${provider} impossible : ${error.message}`);
+        if (connection?.connection_status !== "connected") return { skipped: true };
+        return await runProviderSync(provider);
+      }));
+      syncResults.forEach((result, index) => {
+        if (result.status === "rejected") {
+          const provider = providers[index];
+          syncFailures.push(provider);
+          console.warn(`Synchronisation automatique ${provider} impossible :`, result.reason);
         }
-      } catch (error) {
-        garminSyncFailed = true;
-        console.warn("Synchronisation automatique Garmin impossible :", error);
-      }
+      });
     }
 
     const results = await Promise.allSettled(tasks.map(([, task]) => task()));
@@ -372,15 +375,18 @@ async function loadDashboard(manual = false, syncGarminFirst = false) {
       }
     });
 
-    if (successful === total && !garminSyncFailed) {
+    const syncWarning = syncFailures.length
+      ? ` · ${syncFailures.map(name => name === "garmin" ? "Garmin" : "Hevy").join(" et ")} non actualisé`
+      : "";
+    if (successful === total && syncFailures.length === 0) {
       if (refreshStatus) {
         refreshStatus.classList.add("success");
-        refreshStatus.textContent = `OK · ${timeLabel}${garminSyncFailed ? " · Garmin non actualisé" : ""}`;
+        refreshStatus.textContent = `OK · ${timeLabel}`;
       }
     } else if (successful > 0) {
       if (refreshStatus) {
         refreshStatus.classList.add("partial");
-        refreshStatus.textContent = `Partiel (${successful}/${total}) · ${timeLabel}${garminSyncFailed ? " · Garmin non actualisé" : ""}`;
+        refreshStatus.textContent = `Partiel (${successful}/${total}) · ${timeLabel}${syncWarning}`;
       }
     } else {
       if (refreshStatus) {
