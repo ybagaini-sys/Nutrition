@@ -1,0 +1,243 @@
+
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101827">
+<meta name="description" content="FORME V2 — Nutrition, performance, composition corporelle et récupération.">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./styles.css">
+<style>
+  /* Objectif de poids : repère discret sous le nom de l'application */
+  .brand > div { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .weight-goal-inline { color: var(--muted); font-size: 11px; font-weight: 400; letter-spacing: 0; }
+  .weight-goal-inline strong { display: inline; color: #c5d0df; font-size: inherit; font-weight: 650; letter-spacing: 0; }
+</style>
+<title>FORME V2</title>
+</head>
+<body>
+<main class="shell">
+  <header class="top">
+    <div class="brand"><span class="mark">F</span><div><strong>FORME</strong><small>Nutrition & Performance</small><small class="weight-goal-inline">Objectif : <strong id="weightGoal">72 kg</strong></small><span id="weightProgress" class="hidden" aria-hidden="true"></span></div></div>
+    <div class="top-actions">
+      <span id="connectionBadge" class="badge">Connexion…</span>
+      <button id="menuToggle" class="quiet menu-toggle" type="button" aria-expanded="false" aria-controls="mainMenu">Menu</button>
+    </div>
+  </header>
+  <nav id="mainMenu" class="main-menu hidden" aria-label="Navigation principale">
+    <a href="#nutritionSection">Nutrition</a>
+    <a href="#foodLibrarySection">Ma bibliothèque</a>
+    <a href="#foodHistorySection">Historique</a>
+  </nav>
+
+  <section id="setupNotice" class="panel notice hidden">
+    <h2>Configuration nécessaire</h2>
+    <p>Vérifie l'URL Supabase et la clé publishable dans <code>config.js</code>.</p>
+  </section>
+
+  <section id="authPanel" class="panel hidden">
+    <p class="eyebrow">ESPACE PERSONNEL</p>
+    <h1>Bienvenue dans FORME.</h1>
+    <p class="muted">Connecte-toi avec ton compte personnel.</p>
+    <form id="loginForm">
+      <label for="email">Adresse e-mail</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">Mot de passe</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button class="primary" type="submit">Se connecter</button>
+    </form>
+    <p id="authMessage" class="message" role="status"></p>
+  </section>
+
+  <section id="dashboard" class="hidden">
+    <div class="welcome">
+      <div><p class="eyebrow" id="todayLabel">TON ESPACE</p><h1>Vue d'ensemble</h1><p id="userLabel" class="muted"></p></div>
+      <button id="refreshButton" class="quiet" type="button">Actualiser</button>
+    </div>
+
+    <div class="grid">
+      <article class="tile"><span class="tile-icon">⚖️</span><p class="tile-label">Dernier poids Withings</p><strong class="metric" id="weightValue">—</strong><small id="weightDate">Aucune mesure Withings</small></article>
+      <article class="tile"><span class="tile-icon">🔥</span><p class="tile-label">Calories consommées</p><strong class="metric" id="caloriesValue">0</strong><small id="calorieTarget">Budget stable : 2 200 kcal</small></article>
+      <article class="tile"><span class="tile-icon">🥚</span><p class="tile-label">Protéines aujourd'hui</p><strong class="metric" id="proteinValue">0 g</strong><small id="proteinTarget">Objectif : 160 g</small></article>
+      <article class="tile"><span class="tile-icon">🏋️</span><p class="tile-label">Séances cette semaine</p><strong class="metric" id="workoutsValue">0</strong><small>Hevy et saisies manuelles</small></article>
+    </div>
+
+    <div class="section-title"><div><p class="eyebrow">PILOTAGE ÉNERGÉTIQUE</p><h2>Mon budget du jour</h2></div><span class="badge">Objectif stable</span></div>
+    <article class="panel calorie-panel">
+      <div class="calorie-budget-top">
+        <div><small class="muted">Budget alimentaire quotidien</small><strong id="dailyCalorieBudget" class="calorie-budget-number">2 200 kcal</strong></div>
+        <div class="calorie-remaining"><small id="dailyCaloriesRemainingLabel">Encore disponibles aujourd'hui</small><strong id="dailyCaloriesRemaining">2 200 kcal</strong></div>
+      </div>
+      <div class="calorie-progress-track"><div id="calorieBudgetProgress" class="calorie-progress-fill"></div></div>
+      <div class="calorie-progress-meta"><span id="dailyCaloriesConsumed">0 kcal consommées</span><span id="calorieBudgetProgressText">0 % du budget</span></div>
+      <div class="energy-summary">
+        <div><small>Dépense totale Garmin</small><strong id="garminDailyExpenditure">En attente des données Garmin</strong><span id="garminEnergyDate" class="muted tiny">La dépense totale Garmin apparaîtra ici après synchronisation.</span></div>
+        <div><small>Déficit énergétique estimé</small><strong id="estimatedDailyDeficit">Disponible après synchronisation Garmin</strong><span id="deficitTargetNote" class="muted tiny">Repère visé : environ 450 kcal de déficit moyen par jour</span></div>
+      </div>
+      <p class="footnote">Le budget reste fixé à 2 200 kcal, même les jours d'entraînement. Garmin sert à estimer le déficit réel, sans ajouter une seconde fois les calories actives. Les estimations de la journée restent provisoires jusqu'à sa fin.</p>
+    </article>
+
+    <div class="section-title"><div><p class="eyebrow">DONNÉES WITHINGS</p><h2>Composition corporelle</h2></div><span class="badge" id="compositionDate">En attente</span></div>
+    <article class="panel">
+      <div class="composition-grid">
+        <div class="composition-metric"><small>Poids</small><strong id="compWeight">—</strong></div>
+        <div class="composition-metric"><small>Masse grasse</small><strong id="compFatPct">—</strong><span id="compFatKg" class="metric-sub">—</span></div>
+        <div class="composition-metric"><small>Masse musculaire</small><strong id="compMuscle">—</strong></div>
+        <div class="composition-metric"><small>Masse maigre</small><strong id="compLean">—</strong></div>
+        <div class="composition-metric"><small>Masse osseuse</small><strong id="compBone">—</strong></div>
+        <div class="composition-metric"><small>Graisse viscérale</small><strong id="compVisceral">—</strong></div>
+        <div class="composition-metric"><small>Hydratation (ratio calculé)</small><strong id="compWater">—</strong></div>
+      </div>
+      <p class="footnote">Dernière pesée Withings disponible. Le ratio hydrique est calculé à partir de la masse d'hydratation divisée par le poids.</p>
+    </article>
+
+    <div class="section-title"><div><p class="eyebrow">HISTORIQUE WITHINGS</p><h2>Évolution corporelle</h2></div></div>
+    <article class="panel">
+      <div class="period-controls" role="group" aria-label="Période d'affichage">
+        <button class="quiet period-button active" data-days="7" type="button">7 jours</button>
+        <button class="quiet period-button" data-days="30" type="button">30 jours</button>
+        <button class="quiet period-button" data-days="90" type="button">90 jours</button>
+      </div>
+      <div class="chart-block"><div class="chart-heading"><strong>Poids</strong><span id="weightChange" class="chart-change">—</span></div><div id="weightChart" class="chart-host"><p class="muted">Chargement…</p></div></div>
+      <div class="chart-block"><div class="chart-heading"><strong>Masse grasse (%)</strong><span id="fatChange" class="chart-change">—</span></div><div id="fatChart" class="chart-host"><p class="muted">Chargement…</p></div></div>
+      <div class="chart-block"><div class="chart-heading"><strong>Masse musculaire (kg)</strong><span id="muscleChange" class="chart-change">—</span></div><div id="muscleChart" class="chart-host"><p class="muted">Chargement…</p></div></div>
+      <p class="footnote">Chaque point représente une pesée Withings réelle. Les valeurs absentes restent absentes.</p>
+    </article>
+
+    <div id="nutritionSection" class="section-title"><div><p class="eyebrow">SUIVI QUOTIDIEN</p><h2>Nutrition</h2></div><span class="badge" id="nutritionStatus">Données manuelles et scan</span></div>
+
+    <article class="panel">
+      <p class="eyebrow">AJOUTER UN ALIMENT</p>
+      <h2>Scanner un code-barres</h2>
+      <p class="muted">Utilise l'appareil photo de ton iPhone pour identifier un produit alimentaire.</p>
+
+      <button id="startScanner" class="primary" type="button">📷 Scanner un produit</button>
+
+      <div id="scannerPanel" class="scanner-panel hidden">
+        <video id="scannerVideo" autoplay muted playsinline></video>
+        <p id="scannerMessage" class="message" role="status">Initialisation de la caméra…</p>
+        <button id="stopScanner" class="quiet" type="button">Arrêter le scanner</button>
+      </div>
+
+      <div id="scannedProduct" class="scanned-product hidden">
+        <h3 id="scannedProductName">Produit détecté</h3>
+        <p id="scannedProductDetails" class="muted"></p>
+        <div class="form-grid">
+          <div><label for="scanNutritionBasis">Valeurs nutritionnelles pour</label><select id="scanNutritionBasis" disabled><option value="g">100 g</option><option value="ml">100 ml</option></select></div>
+          <div><label id="scanKcalLabel" for="scanCalories">Calories / 100 g</label><input id="scanCalories" type="number" min="0" step="0.1"></div>
+          <div><label id="scanProteinLabel" for="scanProtein">Protéines / 100 g</label><input id="scanProtein" type="number" min="0" step="0.1"></div>
+          <div><label id="scanCarbsLabel" for="scanCarbs">Glucides / 100 g</label><input id="scanCarbs" type="number" min="0" step="0.1"></div>
+          <div><label id="scanFatLabel" for="scanFat">Lipides / 100 g</label><input id="scanFat" type="number" min="0" step="0.1"></div>
+        </div>
+        <div class="form-grid"><div><label for="scanQuantityUnit">Unité consommée</label><select id="scanQuantityUnit"><option value="g">Grammes (g)</option><option value="ml">Millilitres (ml)</option><option value="piece">Pièces</option></select></div><div><label id="scanPieceWeightLabel" for="scanPieceWeight">Poids par pièce (g), si pièces</label><input id="scanPieceWeight" type="number" min="0.1" step="0.1" placeholder="Ex. 60"></div></div>
+<label for="scanQuantity">Quantité réellement consommée *</label><input id="scanQuantity" type="number" min="0.1" step="0.1" placeholder="Ex. 150" required>
+<div id="scanPreview" class="scan-preview">
+  Saisis la quantité consommée pour calculer les macros.
+</div>
+<p id="scanSaveMessage" class="message" role="status"></p>
+<button id="saveScannedToLibrary" class="quiet" type="button">＋ Ajouter à ma bibliothèque</button>
+<button id="addScannedProduct" class="primary" type="button">
+  Ajouter au journal
+</button>
+<button id="cancelScannedProduct" class="quiet" type="button">
+  Annuler
+</button>
+      </div>
+    </article>
+
+    <div id="foodLibrarySection" class="section-title"><div><p class="eyebrow">MES PRODUITS RÉCURRENTS</p><h2>Ma bibliothèque alimentaire</h2></div><span class="badge" id="libraryCount">0 produit</span></div>
+    <article class="panel library-panel">
+      <p class="muted">Conserve ici uniquement les produits que tu utilises régulièrement. Un scan ne les ajoute jamais automatiquement.</p>
+      <label for="librarySearch">Rechercher dans ma bibliothèque</label>
+      <input id="librarySearch" type="search" placeholder="Nom, marque ou code-barres…" autocomplete="off">
+      <div id="foodLibrary" class="food-library"><p class="muted">Chargement de ta bibliothèque…</p></div>
+      <p id="libraryMessage" class="message" role="status"></p>
+    </article>
+
+    <article class="panel">
+      <p class="eyebrow">SAISIE MANUELLE</p>
+      <h2>Ajouter une consommation</h2>
+      <form id="foodForm">
+  <label for="foodName">Aliment ou repas</label>
+  <input
+    id="foodName"
+    required
+    maxlength="120"
+    placeholder="Ex. Skyr, sandwich poulet…"
+  >
+
+  <div class="form-grid"><div><label for="foodQuantityUnit">Unité</label><select id="foodQuantityUnit"><option value="g">Grammes (g)</option><option value="ml">Millilitres (ml)</option><option value="piece">Pièces</option></select></div><div><label for="foodNutritionBasis">Valeurs nutritionnelles pour</label><select id="foodNutritionBasis" disabled><option value="g">100 g</option><option value="ml">100 ml</option></select></div></div>
+  <label for="foodQuantity">Quantité consommée</label><input id="foodQuantity" type="number" min="0.1" step="0.1" placeholder="Ex. 250" required>
+  <label id="foodPieceWeightLabel" for="foodPieceWeight">Poids par pièce (g), si pièces</label><input id="foodPieceWeight" type="number" min="0.1" step="0.1" placeholder="Ex. 60">
+
+  <div class="form-grid">
+          <div><label id="foodKcalLabel" for="foodKcal">Calories pour 100 g (kcal)</label><input id="foodKcal" type="number" min="0" step="1" required></div>
+          <div><label id="foodProteinLabel" for="foodProtein">Protéines pour 100 g</label><input id="foodProtein" type="number" min="0" step="0.1" required></div>
+          <div><label id="foodCarbsLabel" for="foodCarbs">Glucides pour 100 g</label><input id="foodCarbs" type="number" min="0" step="0.1" value="0"></div>
+          <div><label id="foodFatLabel" for="foodFat">Lipides pour 100 g</label><input id="foodFat" type="number" min="0" step="0.1" value="0"></div>
+        </div>
+        <button class="primary" type="submit">Ajouter au journal</button>
+      </form>
+      <p id="foodMessage" class="message" role="status"></p>
+    </article>
+
+    <div id="foodHistorySection" class="section-title"><div><p class="eyebrow">AUJOURD'HUI</p><h2>Historique alimentaire</h2></div><span class="badge" id="foodCount">0 entrée</span></div>
+    <article class="panel"><div id="foodHistory"><p class="muted">Aucune consommation enregistrée aujourd'hui.</p></div></article>
+
+    <div class="section-title"><div><p class="eyebrow">DONNÉES CORPORELLES</p><h2>Ajouter une pesée manuelle</h2></div></div>
+    <article class="panel">
+      <form id="weightForm" class="inline-form">
+        <div class="field"><label for="weightInput">Poids (kg)</label><input id="weightInput" type="number" min="30" max="300" step="0.1" placeholder="Ex. 79.8" required></div>
+        <button class="primary compact" type="submit">Enregistrer</button>
+      </form>
+      <p id="weightMessage" class="message" role="status"></p>
+      <p class="footnote">Les pesées manuelles restent séparées des mesures Withings.</p>
+    </article>
+
+    <div class="section-title"><div><p class="eyebrow">SOURCES CONNECTÉES</p><h2>Sport & récupération</h2></div></div>
+    <div class="grid">
+      <article class="tile source">
+        <span class="tile-icon">⌚</span><h3>Garmin</h3>
+        <p>Activités, sommeil et récupération.</p>
+        <span class="status" id="garminStatus">Statut à vérifier</span>
+        <button id="garminSync" class="primary compact" type="button">Synchroniser Garmin</button>
+        <p id="garminMessage" class="message" role="status"></p>
+      </article>
+      <article class="tile source">
+        <span class="tile-icon">⚖️</span><h3>Withings</h3><p>Poids et composition corporelle.</p><span class="status">Compte autorisé</span>
+        <button id="withingsConnect" class="quiet" type="button">Reconnecter Withings</button>
+        <button id="withingsSync" class="primary compact" type="button">Synchroniser maintenant</button>
+        <p id="withingsMessage" class="message" role="status"></p>
+      </article>
+      <article class="tile source">
+        <span class="tile-icon">🏋️</span><h3>Hevy Pro</h3>
+        <p>Séries, répétitions et progression.</p>
+        <span class="status" id="hevyStatus">Statut à vérifier</span>
+        <button id="hevySync" class="primary compact" type="button">Synchroniser Hevy</button>
+        <p id="hevyMessage" class="message" role="status"></p>
+      </article>
+      <article class="tile source"><span class="tile-icon">🌙</span><h3>Récupération</h3><p>Sommeil, fréquence cardiaque et stress.</p><span class="status">En attente Garmin</span></article>
+    </div>
+
+    <article class="panel profile-panel">
+      <div class="panel-heading"><div><p class="eyebrow">PROFIL</p><h2>Paramètres de référence</h2></div><button id="logoutButton" class="quiet" type="button">Déconnexion</button></div>
+      <div class="profile-grid">
+        <div><small>Âge calculé</small><strong id="ageValue">—</strong></div>
+        <div><small>Taille</small><strong id="heightValue">—</strong></div>
+        <div><small>Poids cible</small><strong id="targetValue">72 kg</strong></div>
+        <div><small>Calories de départ</small><strong id="targetCaloriesValue">—</strong></div>
+      </div>
+      <p class="footnote">Les données Garmin, Hevy et Withings sont synchronisées dans ton espace Supabase personnel.</p>
+      <p id="syncStatus" class="muted tiny"></p>
+    </article>
+  </section>
+  <footer>FORME V2 · Tableau de bord personnel</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
