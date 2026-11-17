@@ -750,3 +750,25 @@ code {
   .refresh-control { min-width: 0; max-width: 170px; }
   .refresh-status { max-width: 170px; }
 }
+
+
+/* Actions de la saisie manuelle */
+.food-form-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 17px;
+}
+.food-form-actions .primary {
+  margin-top: 0;
+}
+.food-form-actions .quiet {
+  min-height: 45px;
+  margin: 0;
+  padding: 11px 14px;
+}
+@media (max-width: 480px) {
+  .food-form-actions {
+    grid-template-columns: 1fr;
+  }
+}

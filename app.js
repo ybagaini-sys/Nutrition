@@ -133,6 +133,7 @@ async function init() {
   $("refreshButton")?.addEventListener("click", () => loadDashboard(true));
   $("weightForm")?.addEventListener("submit", saveManualWeight);
   $("foodForm")?.addEventListener("submit", saveFood);
+  $("saveManualFoodToLibrary")?.addEventListener("click", saveManualFoodToLibrary);
   $("foodQuantityUnit")?.addEventListener("change", updateFoodUnitLabels);
   $("scanQuantityUnit")?.addEventListener("change", () => {
     updateScanUnitLabels();
@@ -1375,7 +1376,7 @@ function renderFoodLibrary() {
   if (!filtered.length) {
     host.innerHTML = libraryProducts.length
       ? '<p class="muted">Aucun produit ne correspond à cette recherche.</p>'
-      : '<p class="muted">Ta bibliothèque est vide. Après un scan, utilise « Ajouter à ma bibliothèque » pour conserver un produit.</p>';
+      : '<p class="muted">Ta bibliothèque est vide. Après un scan ou une saisie manuelle, utilise « Ajouter à ma bibliothèque » pour conserver un aliment.</p>';
     return;
   }
 
@@ -1466,6 +1467,119 @@ async function saveScannedToLibrary() {
     showMessage("scanSaveMessage", `Ajout impossible : ${error.message}`, true);
   } finally {
     button.disabled = false;
+  }
+}
+
+async function saveManualFoodToLibrary() {
+  if (!client || !currentUser) {
+    showMessage("foodMessage", "Connecte-toi pour enregistrer un aliment dans ta bibliothèque.", true);
+    return;
+  }
+
+  const button = $("saveManualFoodToLibrary");
+  const name = $("foodName")?.value.trim() || "";
+  const unit = $("foodQuantityUnit")?.value || "g";
+  const basis = $("foodNutritionBasis")?.value || "g";
+  const quantityRaw = $("foodQuantity")?.value.trim() || "";
+  const quantity = quantityRaw === "" ? null : Number(quantityRaw);
+  const pieceWeight = Number($("foodPieceWeight")?.value || 0);
+  const kcalRaw = $("foodKcal")?.value.trim() || "";
+  const proteinRaw = $("foodProtein")?.value.trim() || "";
+  const carbsRaw = $("foodCarbs")?.value.trim() || "0";
+  const fatRaw = $("foodFat")?.value.trim() || "0";
+  const nutritionValues = [kcalRaw, proteinRaw, carbsRaw, fatRaw].map(Number);
+
+  if (!name) {
+    showMessage("foodMessage", "Indique le nom de l’aliment avant de l’ajouter à la bibliothèque.", true);
+    $("foodName")?.focus();
+    return;
+  }
+
+  if ([kcalRaw, proteinRaw].some(value => value === "") ||
+      nutritionValues.some(value => !Number.isFinite(value) || value < 0)) {
+    showMessage("foodMessage", "Renseigne des valeurs nutritionnelles valides (kcal et protéines obligatoires).", true);
+    return;
+  }
+
+  if (quantityRaw !== "" && (!Number.isFinite(quantity) || quantity <= 0)) {
+    showMessage("foodMessage", "La quantité indiquée doit être supérieure à zéro.", true);
+    return;
+  }
+
+  if (unit === "piece" && (!Number.isFinite(pieceWeight) || pieceWeight <= 0)) {
+    showMessage("foodMessage", "Indique le poids d’une pièce pour pouvoir réutiliser cet aliment.", true);
+    $("foodPieceWeight")?.focus();
+    return;
+  }
+
+  if ((unit === "ml" && basis !== "ml") || (unit !== "ml" && basis !== "g")) {
+    showMessage("foodMessage", "Vérifie l’unité des valeurs nutritionnelles (100 g ou 100 ml).", true);
+    return;
+  }
+
+  if (button) button.disabled = true;
+  showMessage("foodMessage", "Vérification de la bibliothèque…");
+
+  try {
+    const { data: existingProducts, error: lookupError } = await client
+      .from("food_products")
+      .select("id,name")
+      .eq("user_id", currentUser.id);
+
+    if (lookupError) throw lookupError;
+
+    const normalizedName = name.toLocaleLowerCase("fr").trim();
+    const duplicate = (existingProducts || []).find(product =>
+      String(product.name || "").toLocaleLowerCase("fr").trim() === normalizedName
+    );
+
+    if (duplicate) {
+      await loadFoodLibrary();
+      showMessage("foodMessage", "Cet aliment est déjà présent dans ta bibliothèque. Aucun doublon n’a été créé.", true);
+      return;
+    }
+
+    const defaultServing = quantity && quantity > 0
+      ? quantity
+      : unit === "piece" ? 1 : unit === "ml" ? 250 : 100;
+
+    const row = {
+      user_id: currentUser.id,
+      name,
+      brand: null,
+      barcode: null,
+      serving_basis_g: 100,
+      serving_basis_value: defaultServing,
+      serving_basis_unit: unit,
+      nutrition_basis_unit: basis,
+      piece_weight_g: unit === "piece" ? pieceWeight : null,
+      kcal: nutritionValues[0],
+      protein_g: nutritionValues[1],
+      carbs_g: nutritionValues[2],
+      fat_g: nutritionValues[3],
+      sugars_g: 0,
+      fiber_g: 0,
+      source: "manual"
+    };
+
+    const { error: insertError } = await client
+      .from("food_products")
+      .insert(row);
+
+    if (insertError) throw insertError;
+
+    const refreshed = await loadFoodLibrary();
+    showMessage(
+      "foodMessage",
+      refreshed
+        ? "Aliment ajouté à ta bibliothèque. Il n’a pas été ajouté au journal."
+        : "Aliment enregistré, mais la bibliothèque n’a pas pu être actualisée."
+    );
+  } catch (error) {
+    console.error("Ajout manuel à la bibliothèque :", error);
+    showMessage("foodMessage", `Ajout à la bibliothèque impossible : ${error.message}`, true);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 

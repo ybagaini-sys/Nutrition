@@ -318,7 +318,7 @@
     </div>
 
     <article class="panel library-panel">
-      <p class="muted">Conserve ici uniquement les produits que tu utilises régulièrement. Un scan ne les ajoute jamais automatiquement.</p>
+      <p class="muted">Conserve ici les aliments que tu utilises régulièrement. Un scan ou une saisie manuelle ne les ajoute jamais automatiquement : utilise le bouton dédié.</p>
       <label for="librarySearch">Rechercher dans ma bibliothèque</label>
       <input id="librarySearch" type="search" placeholder="Nom, marque ou code-barres…" autocomplete="off">
       <div id="foodLibrary" class="food-library"><p class="muted">Chargement de ta bibliothèque…</p></div>
@@ -373,7 +373,10 @@
             <input id="foodFat" type="number" min="0" step="0.1" value="0">
           </div>
         </div>
-        <button class="primary" type="submit">Ajouter au journal</button>
+        <div class="food-form-actions">
+          <button class="primary" type="submit">Ajouter au journal</button>
+          <button id="saveManualFoodToLibrary" class="quiet" type="button">＋ Ajouter à ma bibliothèque</button>
+        </div>
       </form>
       <p id="foodMessage" class="message" role="status"></p>
     </article>
