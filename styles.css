@@ -852,3 +852,24 @@ code {
 .calorie-panel .calorie-progress-track { margin:2px 0 0; }
 .calorie-panel .calorie-progress-meta { justify-content:flex-end; }
 .calorie-note { margin:0; color:var(--muted); font-size:11px; line-height:1.5; }
+
+/* Verrouillage de la largeur mobile : aucun élément ne doit élargir la page. */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+#dashboard, .shell, .panel, .tile, .section-title, .welcome, .grid,
+.calorie-panel, .calorie-metric, .calorie-progress-meta {
+  min-width: 0;
+  max-width: 100%;
+}
+.shell { width: min(100% - 32px, 1000px); }
+img, video, canvas, svg { max-width: 100%; }
+input, select, textarea, button { max-width: 100%; }
+@media (max-width: 700px) {
+  .shell { width: calc(100% - 24px); }
+  .section-title, .section-title > div, .calorie-panel > * { min-width: 0; max-width: 100%; }
+  .section-title .badge { max-width: 46%; white-space: normal; overflow-wrap: anywhere; }
+  .calorie-budget-number, .calorie-secondary-number, .calorie-remaining-number { overflow-wrap: anywhere; }
+}
