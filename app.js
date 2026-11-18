@@ -602,11 +602,13 @@ function renderNutritionTrend(startDate, dayCount) {
   const top = 8;
   const bottom = 20;
   const plotHeight = height - top - bottom;
-  // Le seuil correspond au budget journalier autorisé actuellement calculé par FORME.
-  const limit = Number.isFinite(dailyCalorieBudget) && dailyCalorieBudget > 0
+  // Deux seuils cohérents avec le budget dynamique :
+  // bas = budget autorisé après déficit ; haut = dépense estimée avant déficit.
+  const lowerLimit = Number.isFinite(dailyCalorieBudget) && dailyCalorieBudget > 0
     ? dailyCalorieBudget
     : null;
-  const maxValue = Math.max(500, ...(limit ? [limit] : []), ...days.map(day => day.kcal));
+  const upperLimit = lowerLimit === null ? null : lowerLimit + DAILY_DEFICIT_TARGET;
+  const maxValue = Math.max(500, ...(upperLimit ? [upperLimit] : []), ...days.map(day => day.kcal));
   const coords = days.map((day, index) => {
     const x = left + (days.length === 1 ? 0 : index * (width - left - right) / (days.length - 1));
     const y = top + plotHeight - (day.kcal / maxValue) * plotHeight;
@@ -614,25 +616,23 @@ function renderNutritionTrend(startDate, dayCount) {
   });
   const line = coords.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
   const area = `${line} L${width-right},${top+plotHeight} L${left},${top+plotHeight} Z`;
-  const limitY = limit === null ? null : top + plotHeight - (limit / maxValue) * plotHeight;
+  const lowerY = lowerLimit === null ? null : top + plotHeight - (lowerLimit / maxValue) * plotHeight;
+  const upperY = upperLimit === null ? null : top + plotHeight - (upperLimit / maxValue) * plotHeight;
   const labelStart = formatDate(days[0].date, { day: "numeric", month: "short" });
   const labelEnd = formatDate(days[days.length - 1].date, { day: "numeric", month: "short" });
 
   host.innerHTML = `
-    <svg class="nutrition-trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Calories consommées par jour${limit === null ? '' : `, limite journalière ${Math.round(limit)} kilocalories; dépassements en rouge`}">
+    <svg class="nutrition-trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Calories consommées par jour${lowerLimit === null ? '' : `, objectif ${Math.round(lowerLimit)} kilocalories et limite sans déficit ${Math.round(upperLimit)} kilocalories`} ">
       <defs>
-        <clipPath id="nutritionTrendOverLimitClip">
-          <rect x="${left}" y="${top}" width="${width-left-right}" height="${limitY === null ? 0 : Math.max(0, limitY-top)}" />
-        </clipPath>
-        <clipPath id="nutritionTrendUnderLimitClip">
-          <rect x="${left}" y="${limitY === null ? top : limitY}" width="${width-left-right}" height="${limitY === null ? plotHeight : Math.max(0, top+plotHeight-limitY)}" />
-        </clipPath>
+        <clipPath id="nutritionTrendGreenClip"><rect x="${left}" y="${lowerY === null ? top : lowerY}" width="${width-left-right}" height="${lowerY === null ? 0 : Math.max(0, top+plotHeight-lowerY)}" /></clipPath>
+        <clipPath id="nutritionTrendOrangeClip"><rect x="${left}" y="${upperY === null ? top : upperY}" width="${width-left-right}" height="${lowerY === null || upperY === null ? 0 : Math.max(0, lowerY-upperY)}" /></clipPath>
+        <clipPath id="nutritionTrendRedClip"><rect x="${left}" y="${top}" width="${width-left-right}" height="${upperY === null ? 0 : Math.max(0, upperY-top)}" /></clipPath>
       </defs>
       <line class="nutrition-trend-grid" x1="${left}" y1="${top+plotHeight}" x2="${width-right}" y2="${top+plotHeight}" />
       <path class="nutrition-trend-area" d="${area}" />
-      ${limitY === null
+      ${lowerLimit === null
         ? `<path class="nutrition-trend-line" d="${line}" />`
-        : `<path class="nutrition-trend-line" d="${line}" clip-path="url(#nutritionTrendUnderLimitClip)" /><path class="nutrition-trend-line-over" d="${line}" clip-path="url(#nutritionTrendOverLimitClip)" /><line class="nutrition-trend-limit" x1="${left}" y1="${limitY.toFixed(1)}" x2="${width-right}" y2="${limitY.toFixed(1)}" /><text class="nutrition-trend-limit-label" x="${width-right}" y="${Math.max(8, limitY-3).toFixed(1)}" text-anchor="end">Limite ${number(limit, 0)} kcal</text>`}
+        : `<path class="nutrition-trend-line" d="${line}" clip-path="url(#nutritionTrendGreenClip)" /><path class="nutrition-trend-line-orange" d="${line}" clip-path="url(#nutritionTrendOrangeClip)" /><path class="nutrition-trend-line-over" d="${line}" clip-path="url(#nutritionTrendRedClip)" /><line class="nutrition-trend-limit" x1="${left}" y1="${lowerY.toFixed(1)}" x2="${width-right}" y2="${lowerY.toFixed(1)}" /><line class="nutrition-trend-limit-upper" x1="${left}" y1="${upperY.toFixed(1)}" x2="${width-right}" y2="${upperY.toFixed(1)}" /><text class="nutrition-trend-limit-label" x="${width-right}" y="${Math.max(8, lowerY-3).toFixed(1)}" text-anchor="end">Objectif ${number(lowerLimit, 0)}</text><text class="nutrition-trend-limit-label" x="${width-right}" y="${Math.max(8, upperY-3).toFixed(1)}" text-anchor="end">Sans déficit ${number(upperLimit, 0)}</text>`}
       <text class="nutrition-trend-axis" x="${left}" y="${height-3}">${escapeHTML(labelStart)}</text>
       <text class="nutrition-trend-axis" text-anchor="end" x="${width-right}" y="${height-3}">${escapeHTML(labelEnd)}</text>
     </svg>`;

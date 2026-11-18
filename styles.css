@@ -891,7 +891,9 @@ input, select, textarea, button { max-width: 100%; }
 .nutrition-trend-area { fill:rgba(85,214,165,.10); }
 .nutrition-trend-line { fill:none; stroke:var(--accent); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
 .nutrition-trend-limit { stroke:var(--muted); stroke-width:1; stroke-dasharray:4 4; opacity:.8; }
+.nutrition-trend-line-orange { fill:none; stroke:#e6a23c; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
 .nutrition-trend-line-over { fill:none; stroke:#ef5350; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
+.nutrition-trend-limit-upper { stroke:var(--muted); stroke-width:1; stroke-dasharray:2 4; opacity:.55; }
 .nutrition-trend-limit-label { fill:var(--muted); font-size:9px; }
 .nutrition-trend-axis { fill:var(--muted); font-size:10px; }
 .nutrition-trend-total { margin:0; color:var(--muted); font-size:10px; text-align:right; }
