@@ -15,6 +15,8 @@ let client = null;
 let currentUser = null;
 let currentProfile = null;
 let currentPeriod = 7;
+let nutritionTrendPeriod = 7;
+let nutritionTrendRows = [];
 let withingsRows = [];
 let todayFoods = [];
 let libraryProducts = [];
@@ -126,7 +128,18 @@ async function init() {
 
   client = window.supabase.createClient(
     SUPABASE_URL,
-    SUPABASE_ANON_KEY
+    SUPABASE_ANON_KEY,
+    {
+      auth: {
+        // Même clé que celle utilisée par défaut par Supabase pour ce projet :
+        // conserve les sessions déjà enregistrées sur l'iPhone.
+        storage: window.localStorage,
+        storageKey: "sb-anppidyydcqumhwphkug-auth-token",
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    }
   );
 
   $("loginForm")?.addEventListener("submit", login);
@@ -203,6 +216,16 @@ async function init() {
     "scanPieceWeight"
   ].forEach(id => {
     $(id)?.addEventListener("input", updateScanPreview);
+  });
+
+  document.querySelectorAll(".nutrition-trend-button").forEach(button => {
+    button.addEventListener("click", async () => {
+      nutritionTrendPeriod = Number(button.dataset.days);
+      document.querySelectorAll(".nutrition-trend-button").forEach(item => {
+        item.classList.toggle("active", item === button);
+      });
+      await loadNutritionTrend();
+    });
   });
 
   document.querySelectorAll(".period-button").forEach(button => {
@@ -485,8 +508,119 @@ async function loadNutrition() {
 
   todayFoods = data || [];
   renderNutrition();
+  await loadNutritionTrend();
 
   return true;
+}
+
+
+/* =====================================================
+   HISTORIQUE CALORIQUE : JOURNÉES LOCALES COMPLÈTES
+===================================================== */
+function localMidnight(date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+async function loadNutritionTrend() {
+  if (!client || !currentUser) return false;
+
+  const today = localMidnight(new Date());
+  const start = new Date(today);
+  start.setDate(start.getDate() - (nutritionTrendPeriod - 1));
+  const end = new Date(today);
+  end.setDate(end.getDate() + 1);
+
+  const pageSize = 1000;
+  const allRows = [];
+  let page = 0;
+  let error = null;
+  while (true) {
+    const result = await client
+      .from("nutrition_logs")
+      .select("consumed_at,kcal")
+      .eq("user_id", currentUser.id)
+      .gte("consumed_at", start.toISOString())
+      .lt("consumed_at", end.toISOString())
+      .order("consumed_at", { ascending: true })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+    if (result.error) {
+      error = result.error;
+      break;
+    }
+    const rows = result.data || [];
+    allRows.push(...rows);
+    if (rows.length < pageSize) break;
+    page++;
+  }
+
+  if (error) {
+    console.warn("Historique calorique indisponible :", error.message);
+    setText("nutritionTrendSummary", "Historique temporairement indisponible");
+    const host = $("nutritionTrendChart");
+    if (host) host.innerHTML = '<p class="muted">Impossible de charger les consommations.</p>';
+    return false;
+  }
+
+  nutritionTrendRows = allRows;
+  renderNutritionTrend(start, nutritionTrendPeriod);
+  return true;
+}
+
+function renderNutritionTrend(startDate, dayCount) {
+  const totals = new Map();
+  (nutritionTrendRows || []).forEach(row => {
+    const key = localDateKey(new Date(row.consumed_at));
+    totals.set(key, (totals.get(key) || 0) + Math.max(0, Number(row.kcal) || 0));
+  });
+
+  const days = [];
+  for (let index = 0; index < dayCount; index++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + index);
+    const key = localDateKey(date);
+    days.push({ date, key, kcal: Math.round(totals.get(key) || 0) });
+  }
+
+  const total = days.reduce((sum, day) => sum + day.kcal, 0);
+  const average = days.length ? Math.round(total / days.length) : 0;
+  setText("nutritionTrendSummary", `${number(average, 0)} kcal / jour en moyenne`);
+  setText("nutritionTrendTotal", `${number(total, 0)} kcal au total`);
+
+  const host = $("nutritionTrendChart");
+  if (!host) return;
+  if (!nutritionTrendRows.length) {
+    host.innerHTML = '<p class="muted nutrition-trend-empty">Aucune consommation enregistrée sur cette période.</p>';
+    return;
+  }
+
+  const width = 640;
+  const height = 112;
+  const left = 4;
+  const right = 4;
+  const top = 8;
+  const bottom = 20;
+  const plotHeight = height - top - bottom;
+  const maxValue = Math.max(500, ...days.map(day => day.kcal));
+  const coords = days.map((day, index) => {
+    const x = left + (days.length === 1 ? 0 : index * (width - left - right) / (days.length - 1));
+    const y = top + plotHeight - (day.kcal / maxValue) * plotHeight;
+    return { x, y, day };
+  });
+  const line = coords.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  const area = `${line} L${width-right},${top+plotHeight} L${left},${top+plotHeight} Z`;
+  const labelStart = formatDate(days[0].date, { day: "numeric", month: "short" });
+  const labelEnd = formatDate(days[days.length - 1].date, { day: "numeric", month: "short" });
+
+  host.innerHTML = `
+    <svg class="nutrition-trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Calories consommées par jour">
+      <line class="nutrition-trend-grid" x1="${left}" y1="${top+plotHeight}" x2="${width-right}" y2="${top+plotHeight}" />
+      <path class="nutrition-trend-area" d="${area}" />
+      <path class="nutrition-trend-line" d="${line}" />
+      <text class="nutrition-trend-axis" x="${left}" y="${height-3}">${escapeHTML(labelStart)}</text>
+      <text class="nutrition-trend-axis" text-anchor="end" x="${width-right}" y="${height-3}">${escapeHTML(labelEnd)}</text>
+    </svg>`;
 }
 
 /* =====================================================
