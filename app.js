@@ -867,24 +867,28 @@ function renderNutrition() {
 
     return `
       <div class="food-history-item">
-        <div>
+        <div class="food-history-info">
           <strong>${name}</strong>
           <p class="muted">${time} · ${quantity} ${unitLabel}</p>
           <small>${kcal} kcal · ${proteinValue} g protéines</small>
         </div>
-        <button
-          class="quiet"
-          type="button"
-          data-delete-food="${escapeHTML(item.id)}"
-        >Supprimer</button>
+        <div class="food-history-actions">
+          <button class="quiet compact" type="button" data-save-log-food="${escapeHTML(item.id)}" aria-label="Ajouter ${name} à la bibliothèque" title="Ajouter à la bibliothèque">＋</button>
+          <button class="quiet compact" type="button" data-edit-food="${escapeHTML(item.id)}">Modifier</button>
+          <button class="quiet" type="button" data-delete-food="${escapeHTML(item.id)}">Supprimer</button>
+        </div>
       </div>
     `;
   }).join("");
 
   history.querySelectorAll("[data-delete-food]").forEach(button => {
-    button.addEventListener("click", () => {
-      deleteFood(button.dataset.deleteFood);
-    });
+    button.addEventListener("click", () => deleteFood(button.dataset.deleteFood));
+  });
+  history.querySelectorAll("[data-edit-food]").forEach(button => {
+    button.addEventListener("click", () => editFoodQuantity(button.dataset.editFood));
+  });
+  history.querySelectorAll("[data-save-log-food]").forEach(button => {
+    button.addEventListener("click", () => saveLoggedFoodToLibrary(button.dataset.saveLogFood, button));
   });
 }
 
@@ -1016,6 +1020,102 @@ async function saveFood(event) {
 
   } finally {
     button.disabled = false;
+  }
+}
+
+/* =====================================================
+   HISTORIQUE : MODIFICATION DE QUANTITÉ ET BIBLIOTHÈQUE
+===================================================== */
+
+async function editFoodQuantity(id) {
+  const item = todayFoods.find(row => String(row.id) === String(id));
+  if (!item) return;
+  const unit = item.quantity_unit || "g";
+  const oldQuantity = Number(item.quantity_value ?? item.quantity_g ?? 0);
+  const unitLabel = unit === "piece" ? "pièce(s)" : unit;
+  const answer = prompt(`Nouvelle quantité (${unitLabel}) pour « ${item.product_name_snapshot || "Aliment"} » :`, String(oldQuantity));
+  if (answer === null) return;
+  const newQuantity = Number(String(answer).replace(",", ".").trim());
+  if (!Number.isFinite(newQuantity) || newQuantity <= 0) {
+    alert("Indique une quantité numérique supérieure à zéro.");
+    return;
+  }
+  if (!oldQuantity || oldQuantity <= 0) {
+    alert("Impossible de recalculer cette entrée : ancienne quantité indisponible.");
+    return;
+  }
+  const factor = newQuantity / oldQuantity;
+  const oldNormalized = Number(item.quantity_g);
+  const newNormalized = unit === "ml" ? null : (Number.isFinite(oldNormalized) && oldNormalized > 0 ? oldNormalized * factor : newQuantity * factor);
+  const update = {
+    quantity_value: newQuantity,
+    quantity_g: newNormalized,
+    kcal: Number(item.kcal || 0) * factor,
+    protein_g: Number(item.protein_g || 0) * factor,
+    carbs_g: Number(item.carbs_g || 0) * factor,
+    fat_g: Number(item.fat_g || 0) * factor
+  };
+  const { error } = await client.from("nutrition_logs").update(update).eq("id", id).eq("user_id", currentUser.id);
+  if (error) {
+    alert(`Impossible de modifier la quantité : ${error.message}`);
+    return;
+  }
+  await loadNutrition();
+}
+
+async function saveLoggedFoodToLibrary(id, button) {
+  const item = todayFoods.find(row => String(row.id) === String(id));
+  if (!item || !client || !currentUser) return;
+  const name = String(item.product_name_snapshot || "").trim();
+  if (!name) {
+    alert("Cet aliment n'a pas de nom et ne peut pas être enregistré.");
+    return;
+  }
+  if (button) button.disabled = true;
+  try {
+    const { data: existing, error: lookupError } = await client
+      .from("food_products").select("id,name").eq("user_id", currentUser.id).ilike("name", name).limit(1);
+    if (lookupError) throw lookupError;
+    if (existing?.length) {
+      if (button) button.textContent = "✓";
+      showMessage("foodMessage", "Cet aliment est déjà dans ta bibliothèque.");
+      return;
+    }
+    const unit = item.quantity_unit || "g";
+    const quantityValue = Number(item.quantity_value ?? item.quantity_g ?? 0);
+    const normalizedQuantity = unit === "ml" ? quantityValue : Number(item.quantity_g || quantityValue);
+    if (!quantityValue || quantityValue <= 0 || !normalizedQuantity || normalizedQuantity <= 0) {
+      throw new Error("Quantité insuffisante pour reconstituer les valeurs nutritionnelles.");
+    }
+    const factor = normalizedQuantity / 100;
+    const row = {
+      user_id: currentUser.id,
+      name,
+      brand: null,
+      barcode: null,
+      serving_basis_g: 100,
+      serving_basis_value: unit === "piece" ? quantityValue : (unit === "ml" ? 100 : 100),
+      serving_basis_unit: unit,
+      nutrition_basis_unit: unit === "ml" ? "ml" : "g",
+      piece_weight_g: unit === "piece" ? normalizedQuantity / quantityValue : null,
+      kcal: Number(item.kcal || 0) / factor,
+      protein_g: Number(item.protein_g || 0) / factor,
+      carbs_g: Number(item.carbs_g || 0) / factor,
+      fat_g: Number(item.fat_g || 0) / factor,
+      sugars_g: 0,
+      fiber_g: 0,
+      source: "journal"
+    };
+    const { error: insertError } = await client.from("food_products").insert(row);
+    if (insertError) throw insertError;
+    if (button) button.textContent = "✓";
+    showMessage("foodMessage", "Aliment ajouté à ta bibliothèque, sans créer de nouvelle consommation.");
+    await loadFoodLibrary();
+  } catch (error) {
+    console.error("Enregistrement depuis l'historique", error);
+    alert(`Impossible d'ajouter cet aliment : ${error.message}`);
+  } finally {
+    if (button && button.isConnected && button.textContent !== "✓") button.disabled = false;
   }
 }
 
