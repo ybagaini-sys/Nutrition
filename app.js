@@ -585,15 +585,25 @@ function renderNutritionTrend(startDate, dayCount) {
 
   const total = days.reduce((sum, day) => sum + day.kcal, 0);
   const average = days.length ? Math.round(total / days.length) : 0;
-  setText("nutritionTrendSummary", `${number(average, 0)} kcal / jour en moyenne`);
-  setText("nutritionTrendTotal", `${number(total, 0)} kcal au total`);
+  setText(
+    "nutritionTrendSummary",
+    dayCount === 1 ? `${number(total, 0)} kcal consommées aujourd’hui` : `${number(average, 0)} kcal / jour en moyenne`
+  );
+  setText("nutritionTrendTotal", dayCount === 1 ? "Journée en cours" : `${number(total, 0)} kcal au total`);
 
   const host = $("nutritionTrendChart");
   if (!host) return;
-  if (!nutritionTrendRows.length) {
+  if (!nutritionTrendRows.length && dayCount !== 1) {
     host.innerHTML = '<p class="muted nutrition-trend-empty">Aucune consommation enregistrée sur cette période.</p>';
     return;
   }
+
+  setText(
+    "nutritionTrendFootnote",
+    dayCount === 1
+      ? "Aujourd’hui : consommation en cours de journée · Vert : objectif avec déficit · Orange : au-dessus de l’objectif · Rouge : au-dessus de la dépense estimée."
+      : "Vert : objectif avec déficit · Orange : au-dessus de l’objectif · Rouge : au-dessus de la dépense estimée. Chaque point correspond à une journée complète."
+  );
 
   const width = 640;
   const height = 112;
@@ -610,7 +620,7 @@ function renderNutritionTrend(startDate, dayCount) {
   const upperLimit = lowerLimit === null ? null : lowerLimit + DAILY_DEFICIT_TARGET;
   const maxValue = Math.max(500, ...(upperLimit ? [upperLimit] : []), ...days.map(day => day.kcal));
   const coords = days.map((day, index) => {
-    const x = left + (days.length === 1 ? 0 : index * (width - left - right) / (days.length - 1));
+    const x = left + (days.length === 1 ? (width - left - right) / 2 : index * (width - left - right) / (days.length - 1));
     const y = top + plotHeight - (day.kcal / maxValue) * plotHeight;
     return { x, y, day };
   });
@@ -620,6 +630,12 @@ function renderNutritionTrend(startDate, dayCount) {
   const upperY = upperLimit === null ? null : top + plotHeight - (upperLimit / maxValue) * plotHeight;
   const labelStart = formatDate(days[0].date, { day: "numeric", month: "short" });
   const labelEnd = formatDate(days[days.length - 1].date, { day: "numeric", month: "short" });
+  const todayPoint = dayCount === 1 ? coords[0] : null;
+  const todayPointClass = todayPoint && upperLimit !== null && todayPoint.day.kcal > upperLimit
+    ? "over"
+    : todayPoint && lowerLimit !== null && todayPoint.day.kcal > lowerLimit
+      ? "warning"
+      : "";
 
   host.innerHTML = `
     <svg class="nutrition-trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Calories consommées par jour${lowerLimit === null ? '' : `, objectif ${Math.round(lowerLimit)} kilocalories et limite sans déficit ${Math.round(upperLimit)} kilocalories`} ">
@@ -633,6 +649,7 @@ function renderNutritionTrend(startDate, dayCount) {
       ${lowerLimit === null
         ? `<path class="nutrition-trend-line" d="${line}" />`
         : `<path class="nutrition-trend-line" d="${line}" clip-path="url(#nutritionTrendGreenClip)" /><path class="nutrition-trend-line-orange" d="${line}" clip-path="url(#nutritionTrendOrangeClip)" /><path class="nutrition-trend-line-over" d="${line}" clip-path="url(#nutritionTrendRedClip)" /><line class="nutrition-trend-limit" x1="${left}" y1="${lowerY.toFixed(1)}" x2="${width-right}" y2="${lowerY.toFixed(1)}" /><line class="nutrition-trend-limit-upper" x1="${left}" y1="${upperY.toFixed(1)}" x2="${width-right}" y2="${upperY.toFixed(1)}" /><text class="nutrition-trend-limit-label" x="${width-right}" y="${Math.max(8, lowerY-3).toFixed(1)}" text-anchor="end">Objectif ${number(lowerLimit, 0)}</text><text class="nutrition-trend-limit-label" x="${width-right}" y="${Math.max(8, upperY-3).toFixed(1)}" text-anchor="end">Sans déficit ${number(upperLimit, 0)}</text>`}
+      ${todayPoint ? `<circle class="nutrition-trend-point ${todayPointClass}" cx="${todayPoint.x.toFixed(1)}" cy="${todayPoint.y.toFixed(1)}" r="4" /><text class="nutrition-trend-value" x="${todayPoint.x.toFixed(1)}" y="${Math.max(10, todayPoint.y-9).toFixed(1)}" text-anchor="middle">${number(todayPoint.day.kcal, 0)} kcal</text>` : ""}
       <text class="nutrition-trend-axis" x="${left}" y="${height-3}">${escapeHTML(labelStart)}</text>
       <text class="nutrition-trend-axis" text-anchor="end" x="${width-right}" y="${height-3}">${escapeHTML(labelEnd)}</text>
     </svg>`;
