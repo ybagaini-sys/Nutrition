@@ -256,13 +256,21 @@ async function init() {
     setConnection(false, "Non connecté");
   }
 
-  client.auth.onAuthStateChange(async (event, session) => {
+  client.auth.onAuthStateChange((event, session) => {
+    // Un rafraîchissement normal du jeton (TOKEN_REFRESHED) ne signifie pas
+    // que l'utilisateur est déconnecté. Ne masquer l'app que si la session
+    // est réellement absente ou explicitement terminée.
     currentUser = session?.user || null;
 
-    if (currentUser && event === "SIGNED_IN") {
-      await loadDashboard(false, true);
-    } else {
-      await stopScanner();
+    if (session) {
+      if (event === "SIGNED_IN") {
+        loadDashboard(false, true);
+      }
+      return;
+    }
+
+    if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
+      stopScanner();
       showDashboard(false);
       setConnection(false, "Non connecté");
     }
@@ -645,7 +653,7 @@ function renderNutritionTrend(startDate, dayCount) {
         <clipPath id="nutritionTrendRedClip"><rect x="${left}" y="${top}" width="${width-left-right}" height="${upperY === null ? 0 : Math.max(0, upperY-top)}" /></clipPath>
       </defs>
       <line class="nutrition-trend-grid" x1="${left}" y1="${top+plotHeight}" x2="${width-right}" y2="${top+plotHeight}" />
-      <path class="nutrition-trend-area" d="${area}" />
+      <path class="nutrition-trend-area${dayCount === 1 && todayPointClass ? ` ${todayPointClass}` : ""}" d="${area}" />
       ${lowerLimit === null
         ? `<path class="nutrition-trend-line" d="${line}" />`
         : `<path class="nutrition-trend-line" d="${line}" clip-path="url(#nutritionTrendGreenClip)" /><path class="nutrition-trend-line-orange" d="${line}" clip-path="url(#nutritionTrendOrangeClip)" /><path class="nutrition-trend-line-over" d="${line}" clip-path="url(#nutritionTrendRedClip)" /><line class="nutrition-trend-limit" x1="${left}" y1="${lowerY.toFixed(1)}" x2="${width-right}" y2="${lowerY.toFixed(1)}" /><line class="nutrition-trend-limit-upper" x1="${left}" y1="${upperY.toFixed(1)}" x2="${width-right}" y2="${upperY.toFixed(1)}" /><text class="nutrition-trend-limit-label" x="${width-right}" y="${Math.max(8, lowerY-3).toFixed(1)}" text-anchor="end">Objectif ${number(lowerLimit, 0)}</text><text class="nutrition-trend-limit-label" x="${width-right}" y="${Math.max(8, upperY-3).toFixed(1)}" text-anchor="end">Sans déficit ${number(upperLimit, 0)}</text>`}

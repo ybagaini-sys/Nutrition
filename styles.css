@@ -889,6 +889,8 @@ input, select, textarea, button { max-width: 100%; }
 .nutrition-trend-svg { display:block; width:100%; height:86px; overflow:visible; }
 .nutrition-trend-grid { stroke:var(--border); stroke-width:1; }
 .nutrition-trend-area { fill:rgba(85,214,165,.10); }
+.nutrition-trend-area.warning { fill:rgba(230,162,60,.14); }
+.nutrition-trend-area.over { fill:rgba(239,83,80,.16); }
 .nutrition-trend-line { fill:none; stroke:var(--accent); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
 .nutrition-trend-limit { stroke:var(--muted); stroke-width:1; stroke-dasharray:4 4; opacity:.8; }
 .nutrition-trend-line-orange { fill:none; stroke:#e6a23c; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
