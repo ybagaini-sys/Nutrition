@@ -325,13 +325,46 @@
       <span class="badge" id="libraryCount">0 produit</span>
     </div>
 
-    <article class="panel library-panel">
-      <p class="muted">Conserve ici les aliments que tu utilises régulièrement. Un scan ou une saisie manuelle ne les ajoute jamais automatiquement : utilise le bouton dédié.</p>
-      <label for="librarySearch">Rechercher dans ma bibliothèque</label>
-      <input id="librarySearch" type="search" placeholder="Nom, marque ou code-barres…" autocomplete="off">
-      <div id="foodLibrary" class="food-library"><p class="muted">Chargement de ta bibliothèque…</p></div>
+    <article class="panel library-panel library-panel-compact">
+      <p class="muted">Tes aliments récurrents, classés par ordre alphabétique.</p>
+      <details id="libraryDisclosure" class="library-disclosure">
+        <summary><span>Afficher ma bibliothèque</span><span class="library-summary-count" id="librarySummaryCount">0 aliment</span></summary>
+        <div class="library-disclosure-content">
+          <label for="librarySearch">Rechercher un aliment</label>
+          <input id="librarySearch" type="search" placeholder="Nom, marque ou code-barres…" autocomplete="off">
+          <div id="foodLibrary" class="food-library"><p class="muted">Chargement de ta bibliothèque…</p></div>
+        </div>
+      </details>
       <p id="libraryMessage" class="message" role="status"></p>
     </article>
+
+    <div id="libraryEditDialog" class="library-edit-overlay hidden" aria-hidden="true">
+      <section class="library-edit-modal" role="dialog" aria-modal="true" aria-labelledby="libraryEditTitle">
+        <h2 id="libraryEditTitle">Modifier l’aliment</h2>
+        <form id="libraryEditForm">
+          <input id="editLibraryId" type="hidden">
+          <label for="editLibraryName">Nom</label><input id="editLibraryName" maxlength="120" required>
+          <label for="editLibraryBrand">Marque</label><input id="editLibraryBrand" maxlength="120">
+          <div class="form-grid">
+            <div><label for="editLibraryUnit">Unité habituelle</label><select id="editLibraryUnit"><option value="g">Grammes (g)</option><option value="ml">Millilitres (ml)</option><option value="piece">Pièces</option></select></div>
+            <div><label for="editLibraryBasis">Valeurs pour</label><select id="editLibraryBasis"><option value="g">100 g</option><option value="ml">100 ml</option></select></div>
+            <div><label for="editLibraryServing">Portion suggérée</label><input id="editLibraryServing" type="number" min="0.1" step="0.1" required></div>
+            <div><label for="editLibraryPieceWeight">Poids par pièce (g)</label><input id="editLibraryPieceWeight" type="number" min="0.1" step="0.1"></div>
+          </div>
+          <div class="form-grid">
+            <div><label for="editLibraryKcal">Calories (kcal)</label><input id="editLibraryKcal" type="number" min="0" step="0.1" required></div>
+            <div><label for="editLibraryProtein">Protéines (g)</label><input id="editLibraryProtein" type="number" min="0" step="0.1" required></div>
+            <div><label for="editLibraryCarbs">Glucides (g)</label><input id="editLibraryCarbs" type="number" min="0" step="0.1" required></div>
+            <div><label for="editLibraryFat">Lipides (g)</label><input id="editLibraryFat" type="number" min="0" step="0.1" required></div>
+            <div><label for="editLibrarySugars">Sucres (g)</label><input id="editLibrarySugars" type="number" min="0" step="0.1"></div>
+            <div><label for="editLibraryFiber">Fibres (g)</label><input id="editLibraryFiber" type="number" min="0" step="0.1"></div>
+          </div>
+          <p id="editLibraryMessage" class="message" role="status"></p>
+          <div class="library-edit-actions"><button id="cancelLibraryEditor" class="quiet" type="button">Annuler</button><button id="saveLibraryEdit" class="primary" type="submit">Enregistrer</button></div>
+        </form>
+        <button id="closeLibraryEditor" class="library-modal-close" type="button" aria-label="Fermer">×</button>
+      </section>
+    </div>
 
     <article class="panel">
       <p class="eyebrow">SAISIE MANUELLE</p>

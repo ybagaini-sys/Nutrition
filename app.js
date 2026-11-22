@@ -196,6 +196,12 @@ async function init() {
   $("cancelScannedProduct")?.addEventListener("click", cancelScannedProduct);
   $("saveScannedToLibrary")?.addEventListener("click", saveScannedToLibrary);
   $("librarySearch")?.addEventListener("input", renderFoodLibrary);
+  $("libraryEditForm")?.addEventListener("submit", saveLibraryEditor);
+  $("closeLibraryEditor")?.addEventListener("click", closeLibraryEditor);
+  $("cancelLibraryEditor")?.addEventListener("click", closeLibraryEditor);
+  $("libraryEditDialog")?.addEventListener("click", event => {
+    if (event.target.id === "libraryEditDialog") closeLibraryEditor();
+  });
 
   $("menuToggle")?.addEventListener("click", () => {
     const menu = $("mainMenu");
@@ -1628,56 +1634,40 @@ async function stopScanner() {
 async function lookupOpenFoodFacts(barcode) {
   showMessage("scanSaveMessage", "");
   $("scannedProduct")?.classList.add("hidden");
-
   showMessage("scannerMessage", "Recherche du produit…");
 
+  if (!client || !currentUser) {
+    showMessage("scannerMessage", "Ta session a expiré. Reconnecte-toi avant de scanner.", true);
+    return;
+  }
+
   try {
-    const url =
-      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`;
-
-    const response = await fetch(url, {
-      headers: {
-        "Accept": "application/json"
-      }
+    const { data, error } = await client.functions.invoke("off-product-lookup", {
+      body: { barcode: String(barcode).trim() }
     });
-
-    if (!response.ok) {
-      throw new Error(
-        "La base de produits est momentanément indisponible."
-      );
+    if (error) {
+      console.error("Fonction Open Food Facts :", error);
+      throw new Error(`Service de recherche inaccessible (${error.message || "erreur de fonction"}).`);
     }
-
-    const result = await response.json();
-
-    if (result.status !== 1 || !result.product) {
+    if (!data?.ok) {
+      const status = data?.upstreamStatus ? `HTTP ${data.upstreamStatus}` : "réseau indisponible";
+      const detail = data?.message || "Le service Open Food Facts n'a pas répondu correctement.";
+      throw new Error(`${detail} (${status}).`);
+    }
+    if (!data.found || !data.product) {
       $("scannerPanel")?.classList.remove("hidden");
-
-      showMessage(
-        "scannerMessage",
-        `Produit ${barcode} introuvable dans Open Food Facts. Tu peux utiliser la saisie manuelle.`,
-        true
-      );
-
+      showMessage("scannerMessage", `Produit ${barcode} introuvable dans Open Food Facts. Tu peux utiliser la saisie manuelle.`, true);
       return;
     }
 
-    const product = result.product;
+    const product = data.product;
     const nutriments = product.nutriments || {};
-
-    const kcal =
-      nutriments["energy-kcal_100g"] ??
-      (
-        nutriments["energy-kj_100g"] != null
-          ? Number(nutriments["energy-kj_100g"]) / 4.184
-          : null
-      );
+    const kcal = nutriments["energy-kcal_100g"] ??
+      (nutriments["energy-kj_100g"] != null ? Number(nutriments["energy-kj_100g"]) / 4.184 : null);
 
     scannedProductData = {
       barcode,
-      name:
-        product.product_name ||
-        product.product_name_fr ||
-        "Produit sans nom",
+      name: product.product_name || product.product_name_fr || "Produit sans nom",
       brand: product.brands || "",
       kcal: kcal == null ? 0 : Number(kcal),
       protein: Number(nutriments.proteins_100g || 0),
@@ -1686,19 +1676,11 @@ async function lookupOpenFoodFacts(barcode) {
       sugars: Number(nutriments.sugars_100g || 0),
       fiber: Number(nutriments.fiber_100g || 0)
     };
-
     showScannedProduct();
-
   } catch (error) {
-    console.error("Recherche Open Food Facts", error);
-
+    console.error("Recherche Open Food Facts :", error);
     $("scannerPanel")?.classList.remove("hidden");
-
-    showMessage(
-      "scannerMessage",
-      `Erreur de recherche : ${error.message}`,
-      true
-    );
+    showMessage("scannerMessage", `Erreur de recherche : ${error.message}`, true);
   }
 }
 
@@ -1791,7 +1773,9 @@ async function loadFoodLibrary() {
     return false;
   }
 
-  libraryProducts = data || [];
+  libraryProducts = (data || []).slice().sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base", numeric: true })
+  );
   renderFoodLibrary();
   return true;
 }
@@ -1799,19 +1783,18 @@ async function loadFoodLibrary() {
 function renderFoodLibrary() {
   const host = $("foodLibrary");
   if (!host) return;
-
   const term = ($("librarySearch")?.value || "").trim().toLocaleLowerCase("fr");
   const filtered = libraryProducts.filter(product =>
     [product.name, product.brand, product.barcode]
       .some(value => String(value || "").toLocaleLowerCase("fr").includes(term))
-  );
+  ).sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base", numeric: true }));
 
   setText("libraryCount", `${libraryProducts.length} produit${libraryProducts.length > 1 ? "s" : ""}`);
-
+  setText("librarySummaryCount", `${libraryProducts.length} aliment${libraryProducts.length > 1 ? "s" : ""}`);
   if (!filtered.length) {
     host.innerHTML = libraryProducts.length
-      ? '<p class="muted">Aucun produit ne correspond à cette recherche.</p>'
-      : '<p class="muted">Ta bibliothèque est vide. Après un scan ou une saisie manuelle, utilise « Ajouter à ma bibliothèque » pour conserver un aliment.</p>';
+      ? '<p class="muted library-empty">Aucun produit ne correspond à cette recherche.</p>'
+      : '<p class="muted library-empty">Ta bibliothèque est vide. Après un scan ou une saisie manuelle, utilise « Ajouter à ma bibliothèque » pour conserver un aliment.</p>';
     return;
   }
 
@@ -1822,18 +1805,90 @@ function renderFoodLibrary() {
         <small>${escapeHTML(product.brand || "Sans marque")} · ${number(product.kcal, 0)} kcal · ${number(product.protein_g)} g protéines / 100 ${product.nutrition_basis_unit || "g"}</small>
       </div>
       <div class="library-item-actions">
-        <button class="primary compact" type="button" data-use-food="${escapeHTML(product.id)}">Ajouter au journal</button>
-        <button class="quiet danger-text" type="button" data-delete-library="${escapeHTML(product.id)}">Retirer</button>
+        <button class="library-action add" type="button" aria-label="Ajouter ${escapeHTML(product.name)} au journal" title="Ajouter au journal" data-use-food="${escapeHTML(product.id)}">＋</button>
+        <button class="library-action edit" type="button" aria-label="Modifier ${escapeHTML(product.name)}" title="Modifier" data-edit-library="${escapeHTML(product.id)}">Modifier</button>
+        <button class="library-action remove" type="button" aria-label="Retirer ${escapeHTML(product.name)} de la bibliothèque" title="Retirer de la bibliothèque" data-delete-library="${escapeHTML(product.id)}">−</button>
       </div>
     </div>
   `).join("");
 
-  host.querySelectorAll("[data-use-food]").forEach(button => {
-    button.addEventListener("click", () => addLibraryProductToJournal(button.dataset.useFood));
-  });
-  host.querySelectorAll("[data-delete-library]").forEach(button => {
-    button.addEventListener("click", () => deleteLibraryProduct(button.dataset.deleteLibrary));
-  });
+  host.querySelectorAll("[data-use-food]").forEach(button =>
+    button.addEventListener("click", () => addLibraryProductToJournal(button.dataset.useFood)));
+  host.querySelectorAll("[data-delete-library]").forEach(button =>
+    button.addEventListener("click", () => deleteLibraryProduct(button.dataset.deleteLibrary)));
+  host.querySelectorAll("[data-edit-library]").forEach(button =>
+    button.addEventListener("click", () => openLibraryEditor(button.dataset.editLibrary)));
+}
+
+function openLibraryEditor(id) {
+  const product = libraryProducts.find(item => item.id === id);
+  if (!product) return;
+  const dialog = $("libraryEditDialog");
+  if (!dialog) return;
+  $("editLibraryId").value = product.id;
+  $("editLibraryName").value = product.name || "";
+  $("editLibraryBrand").value = product.brand || "";
+  $("editLibraryUnit").value = product.serving_basis_unit || "g";
+  $("editLibraryBasis").value = product.nutrition_basis_unit || "g";
+  $("editLibraryServing").value = product.serving_basis_value ?? 100;
+  $("editLibraryPieceWeight").value = product.piece_weight_g ?? "";
+  $("editLibraryKcal").value = product.kcal ?? 0;
+  $("editLibraryProtein").value = product.protein_g ?? 0;
+  $("editLibraryCarbs").value = product.carbs_g ?? 0;
+  $("editLibraryFat").value = product.fat_g ?? 0;
+  $("editLibrarySugars").value = product.sugars_g ?? 0;
+  $("editLibraryFiber").value = product.fiber_g ?? 0;
+  showMessage("editLibraryMessage", "");
+  dialog.classList.remove("hidden");
+  dialog.setAttribute("aria-hidden", "false");
+  $("editLibraryName").focus();
+}
+
+function closeLibraryEditor() {
+  const dialog = $("libraryEditDialog");
+  dialog?.classList.add("hidden");
+  dialog?.setAttribute("aria-hidden", "true");
+}
+
+async function saveLibraryEditor(event) {
+  event.preventDefault();
+  const id = $("editLibraryId").value;
+  const product = libraryProducts.find(item => item.id === id);
+  if (!product || !client || !currentUser) return;
+  const name = $("editLibraryName").value.trim();
+  const unit = $("editLibraryUnit").value;
+  const basis = $("editLibraryBasis").value;
+  const serving = Number($("editLibraryServing").value);
+  const pieceWeight = Number($("editLibraryPieceWeight").value || 0);
+  const fields = ["Kcal", "Protein", "Carbs", "Fat", "Sugars", "Fiber"];
+  const ids = ["editLibraryKcal", "editLibraryProtein", "editLibraryCarbs", "editLibraryFat", "editLibrarySugars", "editLibraryFiber"];
+  const values = ids.map(id => Number($(id).value));
+  if (!name || !Number.isFinite(serving) || serving <= 0 || values.some(value => !Number.isFinite(value) || value < 0)) {
+    showMessage("editLibraryMessage", "Vérifie le nom, la portion et les valeurs nutritionnelles.", true); return;
+  }
+  if ((unit === "ml" && basis !== "ml") || (unit !== "ml" && basis !== "g")) {
+    showMessage("editLibraryMessage", "L'unité de consommation et la base nutritionnelle ne sont pas cohérentes.", true); return;
+  }
+  if (unit === "piece" && (!Number.isFinite(pieceWeight) || pieceWeight <= 0)) {
+    showMessage("editLibraryMessage", "Indique le poids d'une pièce en grammes.", true); return;
+  }
+  const save = $("saveLibraryEdit");
+  save.disabled = true;
+  try {
+    const { error } = await client.from("food_products").update({
+      name, brand: $("editLibraryBrand").value.trim() || null,
+      serving_basis_value: serving, serving_basis_unit: unit,
+      nutrition_basis_unit: basis, piece_weight_g: unit === "piece" ? pieceWeight : null,
+      kcal: values[0], protein_g: values[1], carbs_g: values[2], fat_g: values[3],
+      sugars_g: values[4], fiber_g: values[5]
+    }).eq("id", id).eq("user_id", currentUser.id);
+    if (error) throw error;
+    closeLibraryEditor();
+    await loadFoodLibrary();
+    showMessage("libraryMessage", `${name} a été modifié dans ta bibliothèque.`);
+  } catch (error) {
+    showMessage("editLibraryMessage", `Modification impossible : ${error.message}`, true);
+  } finally { save.disabled = false; }
 }
 
 async function saveScannedToLibrary() {
